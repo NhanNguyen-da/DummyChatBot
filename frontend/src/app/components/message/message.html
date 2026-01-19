@@ -1,0 +1,51 @@
+<div
+  class="message-wrapper"
+  [class.message-bot]="isBot"
+  [class.message-user]="isUser"
+  [class.message-system]="isSystem"
+  [class.message-alert]="isAlert"
+  [ngClass]="alertClass">
+
+  <!-- Bot Avatar (only for bot messages) -->
+  @if (isBot) {
+    <div class="avatar bot-avatar" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M12 6V18M6 12H18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+  }
+
+  <div class="message-content">
+    <!-- Alert Icon (for alert messages) -->
+    @if (isAlert) {
+      <div class="alert-icon" aria-hidden="true">
+        @if (message.alertLevel === 'danger') {
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M12 9V13M12 17H12.01M10.29 3.86L1.82 18A2 2 0 003.54 21H20.46A2 2 0 0022.18 18L13.71 3.86A2 2 0 0010.29 3.86Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        } @else if (message.alertLevel === 'warning') {
+          <svg viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+            <path d="M12 8V12M12 16H12.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        } @else {
+          <svg viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+            <path d="M12 16V12M12 8H12.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        }
+      </div>
+    }
+
+    <!-- Message Bubble -->
+    <div class="message-bubble">
+      <p class="message-text">{{ message.text }}</p>
+    </div>
+
+    <!-- Timestamp -->
+    <span class="message-time" [attr.aria-label]="'Gui luc ' + formattedTime">
+      {{ formattedTime }}
+    </span>
+  </div>
+</div>

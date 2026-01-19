@@ -1,0 +1,178 @@
+@use '../../../styles/variables' as *;
+@use '../../../styles/mixins' as *;
+
+.message-wrapper {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-sm;
+  margin-bottom: $spacing-md;
+  animation: fadeInUp 0.3s ease-out forwards;
+
+  // Bot messages - left aligned
+  &.message-bot {
+    justify-content: flex-start;
+
+    .message-bubble {
+      background-color: $aqua-island-light;
+      color: $teal-blue-dark;
+      border-radius: $radius-lg $radius-lg $radius-lg 4px;
+      box-shadow: $shadow-sm;
+    }
+
+    .message-time {
+      text-align: left;
+    }
+  }
+
+  // User messages - right aligned
+  &.message-user {
+    justify-content: flex-end;
+
+    .message-content {
+      align-items: flex-end;
+    }
+
+    .message-bubble {
+      background-color: $peacock-blue-light;
+      color: $background-white;
+      border-radius: $radius-lg $radius-lg 4px $radius-lg;
+    }
+
+    .message-time {
+      text-align: right;
+    }
+  }
+
+  // System messages - centered
+  &.message-system {
+    justify-content: center;
+
+    .message-content {
+      align-items: center;
+    }
+
+    .message-bubble {
+      background-color: $bg-system;
+      color: $deep-sapphire-light;
+      border-radius: $radius-md;
+      padding: $spacing-sm $spacing-md;
+      font-size: $font-size-small;
+      text-align: center;
+    }
+
+    .message-time {
+      display: none;
+    }
+  }
+
+  // Alert messages
+  &.message-alert {
+    .message-bubble {
+      border-left: 4px solid;
+      border-radius: $radius-sm;
+      padding: $spacing-md;
+    }
+
+    .message-text {
+      font-weight: $font-weight-medium;
+    }
+
+    &.alert-info {
+      .message-bubble {
+        background-color: $bg-info;
+        border-left-color: $color-info;
+        color: darken($color-info, 20%);
+      }
+      .alert-icon { color: $color-info; }
+    }
+
+    &.alert-warning {
+      .message-bubble {
+        background-color: $bg-warning;
+        border-left-color: $color-warning;
+        color: darken($color-warning, 25%);
+      }
+      .alert-icon { color: $color-warning; }
+    }
+
+    &.alert-danger {
+      .message-bubble {
+        background-color: $bg-danger;
+        border-left-color: $color-danger;
+        color: darken($color-danger, 15%);
+      }
+      .alert-icon { color: $color-danger; }
+    }
+
+    &.alert-success {
+      .message-bubble {
+        background-color: $bg-success;
+        border-left-color: $color-success;
+        color: darken($color-success, 25%);
+      }
+      .alert-icon { color: $color-success; }
+    }
+  }
+}
+
+.avatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: $radius-circle;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  svg {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+.bot-avatar {
+  background-color: $aqua-island-light;
+  color: $teal-blue-dark;
+}
+
+.message-content {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  max-width: $message-max-width-desktop;
+
+  @include mobile {
+    max-width: $message-max-width-mobile;
+  }
+}
+
+.alert-icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  margin-bottom: $spacing-xs;
+
+  svg {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+.message-bubble {
+  padding: $spacing-md $spacing-lg - 4px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.message-text {
+  margin: 0;
+  font-size: $font-size-body;
+  line-height: $line-height-body;
+  white-space: pre-wrap;
+}
+
+.message-time {
+  font-size: 12px;
+  color: $text-secondary;
+  padding: 0 $spacing-xs;
+}

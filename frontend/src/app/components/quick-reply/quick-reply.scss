@@ -1,0 +1,30 @@
+@use '../../../styles/variables' as *;
+@use '../../../styles/mixins' as *;
+
+.quick-reply-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-sm;
+  margin-top: $spacing-sm;
+  margin-left: 40px; // Align with bot messages (avatar width + gap)
+  animation: fadeInUp 0.3s ease-out;
+}
+
+.quick-reply-btn {
+  @include button-outline;
+  @include focus-visible;
+  padding: 10px $spacing-lg;
+  border-radius: $radius-xl;
+  font-size: $font-size-small;
+  white-space: nowrap;
+  min-height: 44px;
+
+  &:hover {
+    background-color: $aqua-island-light;
+    border-color: $teal-blue-dark;
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+}

@@ -1,0 +1,163 @@
+@use '../../../styles/variables' as *;
+@use '../../../styles/mixins' as *;
+
+.chat-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+  background-color: $background-primary;
+}
+
+// ===========================================
+// Welcome Screen
+// ===========================================
+.welcome-screen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: $spacing-lg;
+  animation: fadeIn 0.5s ease-out;
+}
+
+.welcome-content {
+  text-align: center;
+  max-width: 400px;
+}
+
+.welcome-icon {
+  width: 100px;
+  height: 100px;
+  margin: 0 auto $spacing-lg;
+  color: $teal-blue-light;
+  background-color: $aqua-island-light;
+  border-radius: $radius-circle;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  svg {
+    width: 60px;
+    height: 60px;
+  }
+}
+
+.welcome-title {
+  font-size: 32px;
+  font-weight: $font-weight-semibold;
+  color: $teal-blue-dark;
+  margin-bottom: $spacing-md;
+
+  @include mobile {
+    font-size: 28px;
+  }
+}
+
+.welcome-subtitle {
+  font-size: $font-size-body;
+  color: $text-secondary;
+  line-height: $line-height-body;
+  margin-bottom: $spacing-xl;
+}
+
+.start-button {
+  @include button-primary;
+  @include focus-visible;
+  padding: $spacing-md $spacing-xxl;
+  font-size: 18px;
+  border-radius: $radius-full;
+  min-width: 200px;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: $shadow-md;
+  }
+}
+
+.privacy-notice {
+  font-size: $font-size-small;
+  color: $text-secondary;
+  margin-top: $spacing-lg;
+  opacity: 0.7;
+}
+
+// ===========================================
+// Chat Container
+// ===========================================
+.chat-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+// ===========================================
+// Messages Area
+// ===========================================
+.messages-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: $spacing-lg;
+  scroll-behavior: smooth;
+
+  @include custom-scrollbar;
+
+  @include mobile {
+    padding: $spacing-md;
+  }
+}
+
+.messages-content {
+  max-width: $chat-max-width;
+  margin: 0 auto;
+
+  @include tablet {
+    max-width: 90%;
+  }
+
+  @include mobile {
+    max-width: 100%;
+  }
+}
+
+// ===========================================
+// Scroll to Bottom Button
+// ===========================================
+.scroll-button {
+  @include flex-center;
+  @include focus-visible;
+  position: absolute;
+  bottom: 100px;
+  right: $spacing-lg;
+  width: 44px;
+  height: 44px;
+  border-radius: $radius-circle;
+  background-color: $background-white;
+  color: $teal-blue-dark;
+  box-shadow: $shadow-md;
+  border: 1px solid $border-color;
+  transition: all $transition-normal;
+  z-index: 10;
+
+  svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  &:hover {
+    background-color: $aqua-island-light;
+    transform: translateY(-2px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  @include mobile {
+    right: $spacing-md;
+    bottom: 90px;
+  }
+}

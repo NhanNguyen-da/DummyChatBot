@@ -1,0 +1,11 @@
+<div class="quick-reply-container" role="group" aria-label="Cac lua chon tra loi nhanh">
+  @for (reply of replies; track reply.id) {
+    <button
+      type="button"
+      class="quick-reply-btn"
+      (click)="onSelect(reply)"
+      [attr.aria-label]="reply.label">
+      {{ reply.label }}
+    </button>
+  }
+</div>

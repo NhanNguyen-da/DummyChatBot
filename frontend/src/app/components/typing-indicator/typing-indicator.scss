@@ -1,0 +1,65 @@
+@use '../../../styles/variables' as *;
+
+.typing-indicator {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-sm;
+  margin-bottom: $spacing-md;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.avatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: $radius-circle;
+  background-color: $aqua-island-light;
+  color: $teal-blue-dark;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  svg {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+.typing-bubble {
+  background-color: $aqua-island-light;
+  border-radius: $radius-lg $radius-lg $radius-lg 4px;
+  padding: $spacing-md $spacing-lg;
+  box-shadow: $shadow-sm;
+}
+
+.typing-dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  background-color: $teal-blue-light;
+  border-radius: $radius-circle;
+  animation: bounce 0.6s infinite;
+
+  &:nth-child(2) {
+    animation-delay: 0.1s;
+  }
+
+  &:nth-child(3) {
+    animation-delay: 0.2s;
+  }
+}
+
+@keyframes bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-6px);
+  }
+}

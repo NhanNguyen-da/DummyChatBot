@@ -1,0 +1,117 @@
+// ===========================================
+// Medical Triage Chatbot - Design Variables
+// ===========================================
+
+// Primary Colors (Medical & Calming)
+$teal-blue-light: #66B9C9;
+$teal-blue-dark: #005E70;
+$peacock-blue-light: #66A9C5;
+$peacock-blue-dark: #004D6A;
+
+// Accent Colors
+$aqua-island-light: #CDECEB;
+$aqua-island-dark: #70B4B3;
+$deep-sapphire-light: #5A6DA3;
+
+// Neutral Colors
+$background-primary: #F8FAFA;
+$background-white: #FFFFFF;
+$text-primary: #2C3E50;
+$text-secondary: #5A6C7D;
+$border-color: #E1E8ED;
+
+// Alert Colors
+$color-warning: #FFA726;
+$color-danger: #EF5350;
+$color-success: #66BB6A;
+$color-info: #42A5F5;
+
+// Alert Backgrounds
+$bg-warning: #FFF3E0;
+$bg-danger: #FFEBEE;
+$bg-success: #E8F5E9;
+$bg-info: #E3F2FD;
+
+// System Message
+$bg-system: #F0F4F8;
+
+// ===========================================
+// Typography
+// ===========================================
+$font-family-primary: 'Inter', 'Segoe UI', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+
+$font-size-h1: 24px;
+$font-size-h2: 20px;
+$font-size-body: 16px;
+$font-size-small: 14px;
+$font-size-button: 16px;
+
+$font-weight-regular: 400;
+$font-weight-medium: 500;
+$font-weight-semibold: 600;
+
+$line-height-heading: 1.3;
+$line-height-body: 1.5;
+$line-height-button: 1;
+
+// ===========================================
+// Spacing
+// ===========================================
+$spacing-xs: 4px;
+$spacing-sm: 8px;
+$spacing-md: 16px;
+$spacing-lg: 24px;
+$spacing-xl: 32px;
+$spacing-xxl: 48px;
+
+// ===========================================
+// Border Radius
+// ===========================================
+$radius-sm: 8px;
+$radius-md: 12px;
+$radius-lg: 16px;
+$radius-xl: 20px;
+$radius-full: 24px;
+$radius-circle: 50%;
+
+// ===========================================
+// Shadows
+// ===========================================
+$shadow-sm: 0 2px 8px rgba(0, 94, 112, 0.08);
+$shadow-md: 0 4px 12px rgba(0, 94, 112, 0.1);
+$shadow-lg: 0 8px 24px rgba(0, 94, 112, 0.12);
+$shadow-header: 0 2px 8px rgba(0, 0, 0, 0.08);
+$shadow-input: 0 -2px 12px rgba(0, 0, 0, 0.05);
+
+// ===========================================
+// Layout
+// ===========================================
+$header-height: 60px;
+$input-area-height: 80px;
+$chat-max-width: 800px;
+$message-max-width-desktop: 80%;
+$message-max-width-mobile: 90%;
+$department-card-max-width: 400px;
+
+// ===========================================
+// Breakpoints
+// ===========================================
+$breakpoint-mobile: 768px;
+$breakpoint-tablet: 1199px;
+$breakpoint-desktop: 1200px;
+
+// ===========================================
+// Transitions
+// ===========================================
+$transition-fast: 100ms ease;
+$transition-normal: 200ms ease;
+$transition-slow: 300ms ease-out;
+
+// ===========================================
+// Z-Index
+// ===========================================
+$z-index-dropdown: 100;
+$z-index-header: 1000;
+$z-index-input: 1000;
+$z-index-modal: 2000;
+$z-index-tooltip: 3000;

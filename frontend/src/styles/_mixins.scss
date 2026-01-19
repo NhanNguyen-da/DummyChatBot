@@ -1,0 +1,214 @@
+// ===========================================
+// Medical Triage Chatbot - SCSS Mixins
+// ===========================================
+
+@use 'variables' as *;
+
+// ===========================================
+// Responsive Breakpoints
+// ===========================================
+@mixin mobile {
+  @media (max-width: #{$breakpoint-mobile - 1px}) {
+    @content;
+  }
+}
+
+@mixin tablet {
+  @media (min-width: #{$breakpoint-mobile}) and (max-width: #{$breakpoint-tablet}) {
+    @content;
+  }
+}
+
+@mixin desktop {
+  @media (min-width: #{$breakpoint-desktop}) {
+    @content;
+  }
+}
+
+@mixin tablet-up {
+  @media (min-width: #{$breakpoint-mobile}) {
+    @content;
+  }
+}
+
+// ===========================================
+// Flexbox Helpers
+// ===========================================
+@mixin flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@mixin flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+@mixin flex-column {
+  display: flex;
+  flex-direction: column;
+}
+
+// ===========================================
+// Typography
+// ===========================================
+@mixin heading-1 {
+  font-size: $font-size-h1;
+  font-weight: $font-weight-semibold;
+  line-height: $line-height-heading;
+  color: $text-primary;
+}
+
+@mixin heading-2 {
+  font-size: $font-size-h2;
+  font-weight: $font-weight-semibold;
+  line-height: $line-height-heading;
+  color: $text-primary;
+}
+
+@mixin body-text {
+  font-size: $font-size-body;
+  font-weight: $font-weight-regular;
+  line-height: $line-height-body;
+  color: $text-primary;
+}
+
+@mixin small-text {
+  font-size: $font-size-small;
+  font-weight: $font-weight-regular;
+  line-height: $line-height-body;
+  color: $text-secondary;
+}
+
+// ===========================================
+// Buttons
+// ===========================================
+@mixin button-base {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: $font-family-primary;
+  font-size: $font-size-button;
+  font-weight: $font-weight-medium;
+  line-height: $line-height-button;
+  border: none;
+  cursor: pointer;
+  transition: all $transition-normal;
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
+@mixin button-primary {
+  @include button-base;
+  background-color: $teal-blue-light;
+  color: $background-white;
+
+  &:hover:not(:disabled) {
+    background-color: $teal-blue-dark;
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.95);
+  }
+}
+
+@mixin button-outline {
+  @include button-base;
+  background-color: $background-white;
+  color: $teal-blue-dark;
+  border: 2px solid $teal-blue-light;
+
+  &:hover:not(:disabled) {
+    background-color: $aqua-island-light;
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.95);
+  }
+}
+
+// ===========================================
+// Cards & Containers
+// ===========================================
+@mixin card {
+  background-color: $background-white;
+  border-radius: $radius-md;
+  box-shadow: $shadow-md;
+}
+
+@mixin card-bordered {
+  @include card;
+  border: 2px solid $aqua-island-dark;
+}
+
+// ===========================================
+// Animations
+// ===========================================
+@mixin fade-in-up {
+  animation: fadeInUp $transition-slow forwards;
+}
+
+@mixin bounce {
+  animation: bounce 0.6s infinite;
+}
+
+// ===========================================
+// Focus States (Accessibility)
+// ===========================================
+@mixin focus-visible {
+  &:focus-visible {
+    outline: 2px solid $teal-blue-light;
+    outline-offset: 2px;
+  }
+}
+
+// ===========================================
+// Scrollbar Styling
+// ===========================================
+@mixin custom-scrollbar {
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: $background-primary;
+    border-radius: 3px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: $aqua-island-dark;
+    border-radius: 3px;
+
+    &:hover {
+      background: $teal-blue-light;
+    }
+  }
+}
+
+// ===========================================
+// Message Bubble Base
+// ===========================================
+@mixin message-bubble-base {
+  padding: $spacing-md $spacing-lg - 4px;
+  font-size: $font-size-body;
+  line-height: $line-height-body;
+  max-width: $message-max-width-desktop;
+  margin-bottom: $spacing-md;
+
+  @include mobile {
+    max-width: $message-max-width-mobile;
+  }
+}
+
+// ===========================================
+// Touch Target (Accessibility)
+// ===========================================
+@mixin touch-target {
+  min-width: 44px;
+  min-height: 44px;
+}

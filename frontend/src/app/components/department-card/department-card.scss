@@ -1,0 +1,100 @@
+@use '../../../styles/variables' as *;
+@use '../../../styles/mixins' as *;
+
+.department-card {
+  @include card-bordered;
+  max-width: $department-card-max-width;
+  padding: $spacing-lg;
+  margin: $spacing-md 0;
+  margin-left: 40px; // Align with bot messages
+  animation: slideUp 0.4s ease-out;
+
+  @include mobile {
+    margin-left: 0;
+    max-width: 100%;
+  }
+}
+
+.card-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto $spacing-md;
+  color: $teal-blue-light;
+  background-color: $aqua-island-light;
+  border-radius: $radius-md;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  svg {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+.card-content {
+  text-align: center;
+  margin-bottom: $spacing-lg;
+}
+
+.department-name {
+  font-size: $font-size-h2;
+  font-weight: $font-weight-semibold;
+  color: $teal-blue-dark;
+  margin-bottom: $spacing-sm;
+}
+
+.department-description {
+  font-size: $font-size-body;
+  color: $text-secondary;
+  margin-bottom: $spacing-md;
+}
+
+.info-list {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  text-align: left;
+  background-color: $background-primary;
+  padding: $spacing-md;
+  border-radius: $radius-sm;
+}
+
+.info-item {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  font-size: $font-size-body;
+  color: $text-primary;
+}
+
+.info-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: $aqua-island-dark;
+}
+
+.card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.btn-primary {
+  @include button-primary;
+  @include focus-visible;
+  width: 100%;
+  padding: $spacing-md;
+  border-radius: $radius-md;
+  font-size: $font-size-button;
+}
+
+.btn-secondary {
+  @include button-outline;
+  @include focus-visible;
+  width: 100%;
+  padding: $spacing-md;
+  border-radius: $radius-md;
+  font-size: $font-size-button;
+}

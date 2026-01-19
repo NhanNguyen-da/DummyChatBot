@@ -1,0 +1,96 @@
+<div class="chat-wrapper">
+  <!-- Header -->
+  <app-chat-header
+    (resetChat)="onResetChat()"
+    (toggleLanguage)="onLanguageToggle($event)">
+  </app-chat-header>
+
+  <!-- Welcome Screen -->
+  @if (showWelcome) {
+    <div class="welcome-screen">
+      <div class="welcome-content">
+        <div class="welcome-icon">
+          <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="40" cy="40" r="36" stroke="currentColor" stroke-width="2"/>
+            <path d="M40 20V60M20 40H60" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+          </svg>
+        </div>
+
+        <h1 class="welcome-title">Xin Chao!</h1>
+        <p class="welcome-subtitle">
+          Toi la tro ly sang loc benh nhan. Toi se giup ban tim dung chuyen khoa dua tren cac trieu chung cua ban.
+        </p>
+
+        <button
+          type="button"
+          class="start-button"
+          (click)="startConversation()">
+          Bat Dau
+        </button>
+
+        <p class="privacy-notice">
+          Thong tin cua ban se duoc bao mat va chi su dung cho muc dich sang loc.
+        </p>
+      </div>
+    </div>
+  }
+
+  <!-- Chat Area -->
+  @if (!showWelcome) {
+    <div class="chat-container">
+      <!-- Messages Area -->
+      <div
+        #messagesContainer
+        class="messages-area"
+        (scroll)="onScroll($event)">
+        <div class="messages-content">
+          @for (message of conversationState.messages; track message.id) {
+            <app-message [message]="message"></app-message>
+
+            <!-- Department Card (after message with recommendation) -->
+            @if (message.departmentCard) {
+              <app-department-card
+                [department]="message.departmentCard"
+                (bookAppointment)="onBookAppointment($event)"
+                (startOver)="onStartOver()">
+              </app-department-card>
+            }
+          }
+
+          <!-- Quick Replies (show only for last bot message) -->
+          @if (lastMessageQuickReplies && !conversationState.isTyping) {
+            <app-quick-reply
+              [replies]="lastMessageQuickReplies"
+              (replySelected)="onQuickReplySelected($event)">
+            </app-quick-reply>
+          }
+
+          <!-- Typing Indicator -->
+          @if (conversationState.isTyping) {
+            <app-typing-indicator></app-typing-indicator>
+          }
+        </div>
+      </div>
+
+      <!-- Scroll to Bottom Button -->
+      @if (showScrollButton) {
+        <button
+          type="button"
+          class="scroll-button"
+          (click)="scrollToBottom()"
+          aria-label="Cuon xuong cuoi">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M19 14L12 21L5 14M19 5L12 12L5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      }
+
+      <!-- Input Area -->
+      <app-input-area
+        #inputArea
+        [disabled]="isInputDisabled"
+        (messageSent)="onMessageSent($event)">
+      </app-input-area>
+    </div>
+  }
+</div>

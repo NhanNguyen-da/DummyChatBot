@@ -1,0 +1,20 @@
+# Requirements cho Backend Flask
+# Cài đặt: pip install -r requirements.txt
+
+# Framework chính
+Flask==3.0.0
+
+# CORS support để frontend Angular có thể gọi API
+Flask-CORS==4.0.0
+
+# Thư viện làm việc với môi trường variables
+python-dotenv==1.0.0
+
+# Thư viện để làm việc với datetime
+python-dateutil==2.8.2
+
+# LLM Integration
+ollama==0.6.1
+
+# Utilities
+python-dotenv==1.0.0

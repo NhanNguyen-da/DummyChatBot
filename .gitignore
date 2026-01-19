@@ -1,0 +1,84 @@
+# ===========================
+# Python
+# ===========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+*.egg
+.eggs/
+dist/
+build/
+
+# ===========================
+# Database
+# ===========================
+*.db
+*.sqlite
+*.sqlite3
+
+# ===========================
+# Node.js / Angular
+# ===========================
+node_modules/
+npm-debug.log
+yarn-error.log
+/frontend/dist/
+/frontend/tmp/
+/frontend/.angular/
+
+# ===========================
+# IDE & Editors
+# ===========================
+.vscode/
+.idea/
+*.code-workspace
+*.sublime-workspace
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+
+# ===========================
+# OS Generated Files
+# ===========================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# ===========================
+# Environment Variables
+# ===========================
+.env
+.env.local
+.env.*.local
+
+# ===========================
+# Logs
+# ===========================
+*.log
+logs/
+
+# ===========================
+# Testing
+# ===========================
+coverage/
+.nyc_output/
+htmlcov/
+.coverage
+.coverage.*
+
+# ===========================
+# Misc
+# ===========================
+*.bak
+*.tmp
+*.temp
