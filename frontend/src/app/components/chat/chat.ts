@@ -7,7 +7,7 @@ import { QuickReplyComponent } from '../quick-reply/quick-reply';
 import { DepartmentCardComponent } from '../department-card/department-card';
 import { InputAreaComponent } from '../input-area/input-area';
 import { ChatService } from '../../services/chat';
-import { Message, QuickReply, DepartmentRecommendation, ConversationState } from '../../models/message.model';
+import { Message, QuickReply, DepartmentRecommendation, ConversationState, ChatResponse } from '../../models/message.model';
 
 @Component({
   selector: 'app-chat',
@@ -90,7 +90,7 @@ export class ChatComponent implements OnInit, AfterViewChecked {
     this.conversationState.isTyping = true;
     this.shouldScroll = true;
 
-    // Simulate bot response (replace with actual API call)
+    // Send to API
     this.sendMessageToBot(text);
   }
 
@@ -99,6 +99,12 @@ export class ChatComponent implements OnInit, AfterViewChecked {
   }
 
   onResetChat(): void {
+    // Reset on server
+    this.chatService.resetChat(this.conversationState.sessionId).subscribe({
+      error: (err) => console.error('Error resetting chat:', err)
+    });
+
+    // Reset local state
     this.conversationState = {
       sessionId: this.chatService.generateSessionId(),
       messages: [],
@@ -156,86 +162,55 @@ export class ChatComponent implements OnInit, AfterViewChecked {
   }
 
   private sendMessageToBot(text: string): void {
-    // Simulate API delay
-    setTimeout(() => {
-      this.conversationState.isTyping = false;
+    const request = this.chatService.createChatRequest(text, this.conversationState.sessionId);
 
-      // Demo response - replace with actual ChatService call
-      const botResponse = this.generateDemoResponse(text);
-      this.addMessage(botResponse);
-    }, 1500);
+    this.chatService.sendMessage(request).subscribe({
+      next: (response: ChatResponse) => {
+        this.conversationState.isTyping = false;
+        const botMessage = this.createBotMessage(response);
+        this.addMessage(botMessage);
+      },
+      error: (err) => {
+        console.error('Error sending message:', err);
+        this.conversationState.isTyping = false;
+
+        // Show error message
+        const errorMessage: Message = {
+          id: this.generateMessageId(),
+          text: 'Xin loi, da xay ra loi. Vui long thu lai sau.',
+          type: 'system',
+          timestamp: new Date()
+        };
+        this.addMessage(errorMessage);
+      }
+    });
   }
 
-  private generateDemoResponse(userText: string): Message {
-    const lowerText = userText.toLowerCase();
-
-    // Check for red flags
-    if (lowerText.includes('kho tho') || lowerText.includes('dau nguc') || lowerText.includes('bat tinh')) {
-      return {
-        id: this.generateMessageId(),
-        text: 'CANH BAO: Cac trieu chung ban mo ta co the can cap cuu ngay lap tuc. Vui long den phong Cap Cuu hoac goi 115 ngay!',
-        type: 'alert',
-        alertLevel: 'danger',
-        timestamp: new Date()
-      };
-    }
-
-    // Check for symptoms and provide department recommendation
-    if (lowerText.includes('dau dau') || lowerText.includes('chong mat')) {
-      return {
-        id: this.generateMessageId(),
-        text: 'Dua tren cac trieu chung cua ban, toi de xuat ban den Khoa Than Kinh.',
-        type: 'bot',
-        timestamp: new Date(),
-        departmentCard: {
-          departmentId: 7,
-          departmentName: 'Khoa Than Kinh',
-          description: 'Chuyen kham va dieu tri cac benh lien quan den he than kinh',
-          roomNumber: '401',
-          floor: '4',
-          waitTime: 'Khoang 15 phut'
-        }
-      };
-    }
-
-    if (lowerText.includes('dau bung') || lowerText.includes('buon non')) {
-      return {
-        id: this.generateMessageId(),
-        text: 'Dua tren cac trieu chung cua ban, toi de xuat ban den Khoa Noi Tieu Hoa.',
-        type: 'bot',
-        timestamp: new Date(),
-        departmentCard: {
-          departmentId: 2,
-          departmentName: 'Khoa Noi Tieu Hoa',
-          description: 'Chuyen kham va dieu tri cac benh ve duong tieu hoa',
-          roomNumber: '205',
-          floor: '2',
-          waitTime: 'Khoang 20 phut'
-        }
-      };
-    }
-
-    if (lowerText.includes('sot') || lowerText.includes('ho') || lowerText.includes('cam')) {
-      return {
-        id: this.generateMessageId(),
-        text: 'Cam on ban da chia se. De giup ban tot hon, ban co the cho toi biet them:',
-        type: 'bot',
-        timestamp: new Date(),
-        quickReplies: [
-          { id: '1', label: 'Sot cao tren 39 do', value: 'Toi bi sot cao tren 39 do' },
-          { id: '2', label: 'Sot nhe va ho', value: 'Toi bi sot nhe va ho' },
-          { id: '3', label: 'Ho co dam', value: 'Toi bi ho co dam' }
-        ]
-      };
-    }
-
-    // Default follow-up
-    return {
+  private createBotMessage(response: ChatResponse): Message {
+    const message: Message = {
       id: this.generateMessageId(),
-      text: 'Cam on ban da chia se. Ban co the mo ta them ve trieu chung cua minh duoc khong? Vi du: trieu chung bat dau tu khi nao, muc do dau nhu the nao?',
-      type: 'bot',
-      timestamp: new Date()
+      text: response.response,
+      type: response.alertLevel ? 'alert' : 'bot',
+      timestamp: new Date(),
+      alertLevel: response.alertLevel || undefined
     };
+
+    // Add quick replies if present
+    if (response.quickReplies && response.quickReplies.length > 0) {
+      message.quickReplies = response.quickReplies;
+    }
+
+    // Add department recommendation if present
+    if (response.departmentRecommendation) {
+      message.departmentCard = response.departmentRecommendation;
+    }
+
+    // Set suggested department
+    if (response.suggestedDepartment) {
+      message.suggestedDepartment = response.suggestedDepartment;
+    }
+
+    return message;
   }
 
   get lastMessageQuickReplies(): QuickReply[] | undefined {

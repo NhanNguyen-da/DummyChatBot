@@ -1,34 +1,41 @@
-"""
-database.py - Module quản lý kết nối và thao tác với SQLite database
-"""
+# models/database.py
 
-import sqlite3
+import pyodbc
 from contextlib import contextmanager
-from config import Config
+import config
 
 class Database:
-    """
-    Class quản lý database connection và operations
-    """
-
+    
+    @staticmethod
+    def get_connection_string():
+        """Build connection string"""
+        cfg = config.DB_CONFIG
+        
+        # Windows Authentication
+        if cfg.get('trusted_connection'):
+            return (
+                f"DRIVER={{{cfg['driver']}}};"
+                f"SERVER={cfg['server']};"
+                f"DATABASE={cfg['database']};"
+                f"Trusted_Connection=yes;"
+            )
+        
+        # SQL Server Authentication
+        return (
+            f"DRIVER={{{cfg['driver']}}};"
+            f"SERVER={cfg['server']};"
+            f"DATABASE={cfg['database']};"
+            f"UID={cfg['username']};"
+            f"PWD={cfg['password']};"
+        )
+    
     @staticmethod
     @contextmanager
     def get_connection():
-        """
-        Context manager để quản lý kết nối database
-
-        Usage:
-            with Database.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT * FROM departments")
-
-        Yields:
-            sqlite3.Connection: Database connection
-        """
+        """Context manager for database connection"""
         conn = None
         try:
-            conn = sqlite3.connect(Config.DATABASE_PATH)
-            conn.row_factory = sqlite3.Row  # Để trả về dict thay vì tuple
+            conn = pyodbc.connect(Database.get_connection_string())
             yield conn
             conn.commit()
         except Exception as e:
@@ -38,50 +45,40 @@ class Database:
         finally:
             if conn:
                 conn.close()
-
+    
     @staticmethod
     def execute_query(query, params=None, fetch_one=False):
-        """
-        Thực thi một query và trả về kết quả
-
-        Args:
-            query (str): SQL query
-            params (tuple): Parameters cho query
-            fetch_one (bool): True nếu chỉ lấy 1 record
-
-        Returns:
-            dict hoặc list: Kết quả query
-        """
+        """Execute SELECT query"""
         with Database.get_connection() as conn:
             cursor = conn.cursor()
+            
             if params:
                 cursor.execute(query, params)
             else:
                 cursor.execute(query)
-
+            
+            # Get column names
+            columns = [column[0] for column in cursor.description]
+            
             if fetch_one:
                 row = cursor.fetchone()
-                return dict(row) if row else None
+                return dict(zip(columns, row)) if row else None
             else:
                 rows = cursor.fetchall()
-                return [dict(row) for row in rows]
-
+                return [dict(zip(columns, row)) for row in rows]
+    
     @staticmethod
     def execute_update(query, params=None):
-        """
-        Thực thi INSERT/UPDATE/DELETE query
-
-        Args:
-            query (str): SQL query
-            params (tuple): Parameters cho query
-
-        Returns:
-            int: ID của row vừa insert (nếu là INSERT)
-        """
+        """Execute INSERT/UPDATE/DELETE"""
         with Database.get_connection() as conn:
             cursor = conn.cursor()
+            
             if params:
                 cursor.execute(query, params)
             else:
                 cursor.execute(query)
-            return cursor.lastrowid
+            
+            # Get last inserted ID (SQL Server)
+            cursor.execute("SELECT @@IDENTITY")
+            result = cursor.fetchone()
+            return result[0] if result else None

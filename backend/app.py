@@ -5,11 +5,17 @@ import config
 import sys
 import traceback
 
+# Import routes
+from routes.chat_routes import chat_bp
+
 # Khởi tạo Flask app
 app = Flask(__name__)
 
 # Enable CORS
 CORS(app, origins=config.CORS_ORIGINS)
+
+# Register blueprints with /api/v1 prefix
+app.register_blueprint(chat_bp, url_prefix='/api/v1')
 
 # Root route - để test xem server có chạy không
 @app.route('/', methods=['GET'])
@@ -97,12 +103,14 @@ if __name__ == '__main__':
     print("🚀 Server đang chạy ở môi trường: development")
     print(f"📍 Truy cập tại: http://{config.FLASK_HOST}:{config.FLASK_PORT}")
     print(f"🤖 Ollama Model: {config.OLLAMA_MODEL}")
-    print(f"💾 Database: {config.DATABASE_PATH}")
     print("=" * 60)
     print("\n📋 Available Endpoints:")
     print(f"  GET  /                    - API Info")
     print(f"  GET  /api/health          - Health Check")
     print(f"  GET  /api/test-ollama     - Test Ollama Connection")
+    print(f"  POST /api/v1/chat         - Send chat message")
+    print(f"  GET  /api/v1/chat/history - Get chat history")
+    print(f"  POST /api/v1/chat/reset   - Reset chat session")
     print("=" * 60)
     print("\n✨ Server is ready! Press CTRL+C to quit\n")
     

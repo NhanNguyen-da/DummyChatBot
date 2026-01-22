@@ -12,7 +12,7 @@ import { environment } from '../../environments/environment';
   providedIn: 'root'
 })
 export class ChatService {
-  private apiUrl = `${environment.apiUrl}/chat`;
+  private apiUrl = `${environment.apiUrl}`;
 
   constructor(private http: HttpClient) { }
 
@@ -41,6 +41,19 @@ export class ChatService {
    */
   resetChat(sessionId: string): Observable<any> {
     return this.http.post(`${this.apiUrl}/chat/reset`, { sessionId });
+  }
+
+  /**
+   * Tạo request object cho chat API
+   * @param message - Tin nhắn người dùng
+   * @param sessionId - Session ID
+   * @returns ChatRequest object
+   */
+  createChatRequest(message: string, sessionId: string): ChatRequest {
+    return {
+      message: message,
+      sessionId: sessionId
+    };
   }
 
   /**

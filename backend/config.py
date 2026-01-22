@@ -18,9 +18,15 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
     DEBUG = True
 
-    # Cấu hình Database
-    DATABASE_PATH = os.path.join(BASE_DIR, 'database', 'chatbot.db')
-
+    # === SQL Server 2020 Configuration ===
+    DB_CONFIG = {
+        'server': 'localhost',                    # hoặc 'localhost\\SQLEXPRESS' nếu dùng Express
+        'database': 'chatbot',
+        'driver': 'ODBC Driver 17 for SQL Server',
+        'username': 'nt',
+        'password': 'Ntn@1997',
+        'trusted_connection': False,              # Set True for Windows Authentication
+    }
     # Cấu hình CORS (cho phép Angular frontend truy cập)
     CORS_ORIGINS = [
         "http://localhost:4200",  # Angular development server
@@ -49,7 +55,7 @@ OLLAMA_HOST = os.environ.get('OLLAMA_HOST', 'http://localhost:11434')
 
 # Export Config class attributes as module-level
 SECRET_KEY = Config.SECRET_KEY
-DATABASE_PATH = Config.DATABASE_PATH
+DB_CONFIG = Config.DB_CONFIG
 CORS_ORIGINS = Config.CORS_ORIGINS
 API_PREFIX = Config.API_PREFIX
 LLM_MODEL_NAME = Config.LLM_MODEL_NAME

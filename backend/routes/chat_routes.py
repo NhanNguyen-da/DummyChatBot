@@ -4,9 +4,14 @@ Chứa các endpoint cho tương tác chatbot
 """
 
 from flask import Blueprint, request, jsonify
+from services.chatbot_service import ChatbotService
 
 # Tạo Blueprint cho chat routes
 chat_bp = Blueprint('chat', __name__)
+
+# Initialize chatbot service
+chatbot_service = ChatbotService()
+
 
 @chat_bp.route('/chat', methods=['POST'])
 def chat():
@@ -16,21 +21,45 @@ def chat():
     Request body:
     {
         "message": "Tôi bị đau đầu",
-        "session_id": "uuid-string",
-        "conversation_history": []
+        "sessionId": "uuid-string"
     }
 
     Returns:
         JSON response với câu trả lời của bot
     """
-    # TODO: Implement chat logic
-    data = request.get_json()
+    try:
+        data = request.get_json()
 
-    return jsonify({
-        'response': 'Xin chào! Tôi là trợ lý y tế. Hãy cho tôi biết triệu chứng của bạn.',
-        'session_id': data.get('session_id'),
-        'suggested_department': None
-    }), 200
+        if not data:
+            return jsonify({
+                'error': 'Request body is required'
+            }), 400
+
+        message = data.get('message', '').strip()
+        session_id = data.get('sessionId')
+
+        if not message:
+            return jsonify({
+                'error': 'Message is required'
+            }), 400
+
+        if not session_id:
+            return jsonify({
+                'error': 'Session ID is required'
+            }), 400
+
+        # Process message through triage service
+        result = chatbot_service.process_message(message, session_id)
+
+        return jsonify(result), 200
+
+    except Exception as e:
+        print(f"Error in chat endpoint: {str(e)}")
+        return jsonify({
+            'error': 'Internal server error',
+            'message': str(e)
+        }), 500
+
 
 @chat_bp.route('/chat/history/<session_id>', methods=['GET'])
 def get_chat_history(session_id):
@@ -43,11 +72,42 @@ def get_chat_history(session_id):
     Returns:
         JSON response với lịch sử hội thoại
     """
-    # TODO: Implement get history from database
-    return jsonify({
-        'session_id': session_id,
-        'history': []
-    }), 200
+    try:
+        if not session_id:
+            return jsonify({
+                'error': 'Session ID is required'
+            }), 400
+
+        history = chatbot_service.get_conversation_history(session_id)
+
+        # Format history for frontend
+        formatted_history = []
+        for turn in history:
+            if turn['user_message']:
+                formatted_history.append({
+                    'type': 'user',
+                    'text': turn['user_message'],
+                    'timestamp': turn['timestamp']
+                })
+            if turn['bot_response']:
+                formatted_history.append({
+                    'type': 'bot',
+                    'text': turn['bot_response'],
+                    'timestamp': turn['timestamp']
+                })
+
+        return jsonify({
+            'sessionId': session_id,
+            'history': formatted_history
+        }), 200
+
+    except Exception as e:
+        print(f"Error getting chat history: {str(e)}")
+        return jsonify({
+            'error': 'Internal server error',
+            'message': str(e)
+        }), 500
+
 
 @chat_bp.route('/chat/reset', methods=['POST'])
 def reset_chat():
@@ -56,16 +116,31 @@ def reset_chat():
 
     Request body:
     {
-        "session_id": "uuid-string"
+        "sessionId": "uuid-string"
     }
 
     Returns:
         JSON response xác nhận reset thành công
     """
-    # TODO: Implement reset logic
-    data = request.get_json()
+    try:
+        data = request.get_json()
+        session_id = data.get('sessionId')
 
-    return jsonify({
-        'message': 'Đã reset cuộc hội thoại',
-        'session_id': data.get('session_id')
-    }), 200
+        if not session_id:
+            return jsonify({
+                'error': 'Session ID is required'
+            }), 400
+
+        chatbot_service.reset_conversation(session_id)
+
+        return jsonify({
+            'message': 'Đã reset cuộc hội thoại',
+            'sessionId': session_id
+        }), 200
+
+    except Exception as e:
+        print(f"Error resetting chat: {str(e)}")
+        return jsonify({
+            'error': 'Internal server error',
+            'message': str(e)
+        }), 500
