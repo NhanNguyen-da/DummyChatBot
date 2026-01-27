@@ -65,10 +65,10 @@ export class ChatComponent implements OnInit, AfterViewChecked {
       type: 'bot',
       timestamp: new Date(),
       quickReplies: [
-        { id: '1', label: 'Dau dau', value: 'Toi bi dau dau' },
-        { id: '2', label: 'Dau bung', value: 'Toi bi dau bung' },
-        { id: '3', label: 'Sot', value: 'Toi bi sot' },
-        { id: '4', label: 'Ho', value: 'Toi bi ho' }
+        { id: '1', label: 'Đau đầu', value: 'Tôi bị đau đầu' },
+        { id: '2', label: 'Đau họng', value: 'Tôi bị đau họng' },
+        { id: '3', label: 'Sốt', value: 'Tôi bị sốt' },
+        { id: '4', label: 'Ho', value: 'Tôi bị ho' }
       ]
     };
 
