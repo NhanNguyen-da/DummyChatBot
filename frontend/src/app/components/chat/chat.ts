@@ -177,7 +177,7 @@ export class ChatComponent implements OnInit, AfterViewChecked {
         // Show error message
         const errorMessage: Message = {
           id: this.generateMessageId(),
-          text: 'Xin loi, da xay ra loi. Vui long thu lai sau.',
+          text: 'Xin lỗi, đã xảy ra lỗi. Vui lòng thử lại sau.',
           type: 'system',
           timestamp: new Date()
         };

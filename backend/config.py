@@ -21,11 +21,11 @@ class Config:
     # === SQL Server 2020 Configuration ===
     DB_CONFIG = {
         'server': 'localhost',                    # hoặc 'localhost\\SQLEXPRESS' nếu dùng Express
-        'database': 'chatbot',
+        'database': 'Chatbot',
         'driver': 'ODBC Driver 17 for SQL Server',
         'username': 'nt',
         'password': 'Ntn@1997',
-        'trusted_connection': False,              # Set True for Windows Authentication
+        'trusted_connection': True,               # Set True for Windows Authentication
     }
     # Cấu hình CORS (cho phép Angular frontend truy cập)
     CORS_ORIGINS = [

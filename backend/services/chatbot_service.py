@@ -1,24 +1,21 @@
 """
-chatbot_service.py - Service xử lý logic triage của chatbot
-Implements 5-step triage flow: red flags -> extract symptoms -> match rules -> decide -> re-check
+chatbot_service.py - Simple Triage Chatbot Logic
+Following the spec: 5 turns max, red flags first, score threshold = 7
 """
 
 import json
 import re
-import unicodedata
 from models.database import Database
 
 
 class ChatbotService:
     """
-    Service quản lý logic chatbot triage
+    Simple triage chatbot service
     """
 
     def __init__(self):
-        """
-        Khởi tạo ChatbotService
-        """
-        # Vietnamese accent mapping for text normalization
+        """Initialize with Vietnamese keyword mappings"""
+        # Vietnamese text normalization
         self.accent_map = {
             'à': 'a', 'á': 'a', 'ả': 'a', 'ã': 'a', 'ạ': 'a',
             'ă': 'a', 'ằ': 'a', 'ắ': 'a', 'ẳ': 'a', 'ẵ': 'a', 'ặ': 'a',
@@ -33,7 +30,6 @@ class ChatbotService:
             'ư': 'u', 'ừ': 'u', 'ứ': 'u', 'ử': 'u', 'ữ': 'u', 'ự': 'u',
             'ỳ': 'y', 'ý': 'y', 'ỷ': 'y', 'ỹ': 'y', 'ỵ': 'y',
             'đ': 'd',
-            # Uppercase
             'À': 'A', 'Á': 'A', 'Ả': 'A', 'Ã': 'A', 'Ạ': 'A',
             'Ă': 'A', 'Ằ': 'A', 'Ắ': 'A', 'Ẳ': 'A', 'Ẵ': 'A', 'Ặ': 'A',
             'Â': 'A', 'Ầ': 'A', 'Ấ': 'A', 'Ẩ': 'A', 'Ẫ': 'A', 'Ậ': 'A',
@@ -49,818 +45,373 @@ class ChatbotService:
             'Đ': 'D'
         }
 
-        # Context detection keywords
-        # Pregnancy, Pediatric, Severity, Mild, Negation
-        self.pregnancy_keywords = ['mang thai', 'có thai', 'thai nghén', 'bầu', 'thai kỳ']
-        self.pediatric_keywords = ['con tôi', 'bé', 'cháu', 'trẻ', 'tháng tuổi', 'tuổi']
-        self.severity_keywords = ['dữ dội', 'rất đau', 'quá đau', 'không chịu nổi', 'nặng']
-        self.mild_keywords = ['nhẹ', 'ít đau', 'chịu được', 'không đau lắm', 'bình thường']
-        self.negation_keywords = ['không', 'chưa', 'hết']  # "not", "not yet", "gone"
+        # Keywords for context detection
+        self.pregnant_keywords = ['mang thai', 'co thai', 'bau', 'thai nghen']
+        self.severity_keywords = ['du doi', 'rat dau', 'qua dau', 'khong chiu noi', 'nang', 'rat nang']
+
+    # =========================================================================
+    # HELPER METHODS
+    # =========================================================================
 
     def normalize_text(self, text):
-        """
-        Normalize Vietnamese text by removing accents for matching
-
-        Args:
-            text (str): Vietnamese text with accents
-
-        Returns:
-            str: Normalized text without accents, lowercase
-        """
+        """Remove Vietnamese accents for matching"""
         if not text:
             return ''
-
-        # Convert to lowercase
         text = text.lower()
+        return ''.join(self.accent_map.get(c, c) for c in text)
 
-        # Replace Vietnamese characters
-        result = []
-        for char in text:
-            result.append(self.accent_map.get(char, char))
-
-        return ''.join(result)
-
-    def get_conversation_context(self, session_id):
-        """
-        Get accumulated context from previous turns in this session
-
-        Args:
-            session_id (str): Session ID
-
-        Returns:
-            dict: Accumulated context with symptoms, flags, turn count, etc.
-        """
+    def get_last_turn(self, session_id):
+        """Get the last conversation turn for this session"""
         query = """
-        SELECT TOP 1 turn_number, extracted_symptoms, matched_red_flags,
-               patient_age, patient_gender, conversation_status,
-               current_esi_level, recommended_department_id,
-               current_score, is_pregnant, is_pediatric, is_severe,
-               collected_duration, collected_location, last_question_type
+        SELECT TOP 1 turn_number, extracted_symptoms, patient_age, patient_gender,
+               collected_duration, collected_severity, is_pregnant, is_pediatric,
+               is_severe, current_score, conversation_status, last_question_type
         FROM conversations
         WHERE session_id = ?
         ORDER BY turn_number DESC
         """
+        return Database.execute_query(query, (session_id,), fetch_one=True)
 
-        last_turn = Database.execute_query(query, (session_id,), fetch_one=True)
+    def extract_age(self, message):
+        """Extract age from message"""
+        # Pattern: "X tuoi"
+        match = re.search(r'(\d+)\s*(tuoi|tuổi)', message)
+        if match:
+            return int(match.group(1))
+        return None
 
-        if not last_turn:
-            return {
-                'turn_number': 0,
-                'symptoms': [],
-                'red_flags': [],
-                'is_pregnant': False,
-                'is_pediatric': False,
-                'is_elderly': False,
-                'is_severe': False,
-                'patient_age': None,
-                'patient_gender': None,
-                'collected_duration': None,
-                'collected_location': None,
-                'current_score': 0,
-                'follow_up_asked': False,
-                'last_question_type': None,
-                'status': 'in_progress'
-            }
+    def extract_gender(self, message):
+        """Extract gender from message"""
+        if re.search(r'\b(nu|nữ|nu gioi)\b', message):
+            return 'nu'
+        if re.search(r'\b(nam|nam gioi)\b', message) and 'viet nam' not in message:
+            return 'nam'
+        return None
 
-        # Parse JSON fields
-        symptoms = json.loads(last_turn['extracted_symptoms']) if last_turn['extracted_symptoms'] else []
-        red_flags = json.loads(last_turn['matched_red_flags']) if last_turn['matched_red_flags'] else []
-
-        # Determine is_elderly from patient_age
-        patient_age = last_turn['patient_age']
-        is_elderly = True if patient_age and patient_age >= 65 else False
-
-        # Determine is_pregnant and is_pediatric from DB fields or red_flags
-        is_pregnant = last_turn['is_pregnant'] if last_turn['is_pregnant'] is not None else any('pregnant' in str(f).lower() or 'thai' in str(f).lower() for f in red_flags)
-        is_pediatric = last_turn['is_pediatric'] if last_turn['is_pediatric'] is not None else any('pediatric' in str(f).lower() or 'tre' in str(f).lower() for f in red_flags)
-        is_severe = last_turn['is_severe'] if last_turn['is_severe'] is not None else (last_turn['current_esi_level'] and last_turn['current_esi_level'] <= 2)
-
-        return {
-            'turn_number': last_turn['turn_number'],
-            'symptoms': symptoms,
-            'red_flags': red_flags,
-            'is_pregnant': is_pregnant,
-            'is_pediatric': is_pediatric,
-            'is_elderly': is_elderly,
-            'is_severe': is_severe,
-            'patient_age': patient_age,
-            'patient_gender': last_turn['patient_gender'],
-            'collected_duration': last_turn['collected_duration'],
-            'collected_location': last_turn['collected_location'],
-            'current_score': last_turn['current_score'] if last_turn['current_score'] else 0,
-            'follow_up_asked': last_turn['turn_number'] >= 1,
-            'last_question_type': last_turn['last_question_type'],
-            'status': last_turn['conversation_status']
-        }
-
-    def detect_context(self, message, existing_context):
-        """
-        Detect context indicators from user message (pregnancy, pediatric, severity)
-
-        Args:
-            message (str): Normalized user message
-            existing_context (dict): Existing context from previous turns
-
-        Returns:
-            dict: Updated context flags
-        """
-        context = {
-            'is_pregnant': existing_context.get('is_pregnant', False),
-            'is_pediatric': existing_context.get('is_pediatric', False),
-            'is_severe': existing_context.get('is_severe', False)
-        }
-
-        # Check for pregnancy
-        for keyword in self.pregnancy_keywords:
-            if keyword in message:
-                context['is_pregnant'] = True
-                break
-
-        # Check for pediatric
-        for keyword in self.pediatric_keywords:
-            if keyword in message:
-                context['is_pediatric'] = True
-                break
-
-        # Check for mild keywords first (takes priority over severity)
-        is_mild = False
-        for keyword in self.mild_keywords:
-            if keyword in message:
-                is_mild = True
-                break
-
-        # Check for severity keywords (but handle negation)
-        if not is_mild:
-            for keyword in self.severity_keywords:
-                if keyword in message:
-                    # Check if negation word appears before severity keyword
-                    keyword_pos = message.find(keyword)
-                    has_negation = False
-                    for neg in self.negation_keywords:
-                        neg_pos = message.find(neg)
-                        # Negation is before keyword and within 15 chars
-                        if neg_pos != -1 and neg_pos < keyword_pos and (keyword_pos - neg_pos) < 15:
-                            has_negation = True
-                            break
-                    if not has_negation:
-                        context['is_severe'] = True
-                        break
-
-        # If mild is detected, explicitly set is_severe to False
-        if is_mild:
-            context['is_severe'] = False
-
-        # Check affirmative responses for pregnancy
-        if 'co' in message.split() and existing_context.get('last_question') == 'pregnancy':
-            context['is_pregnant'] = True
-
-        return context
-
-    def calculate_score(self, matched_keywords_count, context, patient_info):
-        """
-        Calculate total score for department recommendation
-
-        FORMULA: SCORE = keyword_score + context_score + info_score
-
-        SCORING BREAKDOWN:
-        - A. Keyword Score (0-5): Based on matched symptoms
-             1 keyword = 2 points
-             2 keywords = 3 points
-             3 keywords = 4 points
-             4+ keywords = 5 points
-
-        - B. Context Score (0-3): Based on patient context
-             is_pregnant = +1
-             is_pediatric = +1
-             is_elderly = +1
-             is_severe = +1
-             (capped at 3 max)
-
-        - C. Info Score (0-2): Based on collected information
-             has age = +0.5
-             has gender = +0.5
-             has duration = +0.5
-             has location = +0.5
-
-        THRESHOLD: >= 7 to recommend department
-        MAX POSSIBLE: 5 + 3 + 2 = 10 points
-
-        Args:
-            matched_keywords_count (int): Number of matched symptom keywords
-            context (dict): Contains is_pregnant, is_pediatric, is_elderly, is_severe
-            patient_info (dict): Contains age, gender, duration, location
-
-        Returns:
-            float: Total score (0-10)
-        """
-        # A: Keyword Score (0-5) - UPDATED WEIGHTS
-        if matched_keywords_count >= 4:
-            keyword_score = 5
-        elif matched_keywords_count == 3:
-            keyword_score = 4
-        elif matched_keywords_count == 2:
-            keyword_score = 3
-        elif matched_keywords_count == 1:
-            keyword_score = 2  # Changed from 1 to 2
-        else:
-            keyword_score = 0
-
-        # B: Context Score (0-3, max 3 points total)
-        context_score = 0
-        if context.get('is_pregnant'):
-            context_score += 1
-        if context.get('is_pediatric'):
-            context_score += 1
-        if context.get('is_elderly'):
-            context_score += 1
-        if context.get('is_severe'):
-            context_score += 1
-        context_score = min(context_score, 3)  # Cap at 3
-
-        # C: Information Score (0-2)
-        info_score = 0.0
-        if patient_info.get('age') is not None:
-            info_score += 0.5
-        if patient_info.get('gender') is not None:
-            info_score += 0.5
-        if patient_info.get('duration') is not None:
-            info_score += 0.5
-        if patient_info.get('location') is not None:
-            info_score += 0.5
-        info_score = min(info_score, 2.0)  # Cap at 2
-
-        total_score = keyword_score + context_score + info_score
-        return min(total_score, 10.0)  # Cap at 10
-
-    def extract_age_gender(self, message):
-        """
-        Extract age and gender from user message
-
-        Args:
-            message (str): Normalized message
-
-        Returns:
-            dict: {'age': int or None, 'gender': str or None, 'is_pediatric': bool, 'is_elderly': bool}
-        """
-        result = {
-            'age': None,
-            'gender': None,
-            'is_pediatric': False,
-            'is_elderly': False
-        }
-
-        # Age patterns (Vietnamese)
-        # Pattern: "duoi 15 tuoi" (under 15)
-        under_match = re.search(r'duoi\s+(\d+)\s*(tuoi|tuổi)', message)
-        if under_match:
-            age_limit = int(under_match.group(1))
-            result['age'] = age_limit - 1
-            if age_limit <= 15:
-                result['is_pediatric'] = True
-
-        # Pattern: "tren 65 tuoi" (over 65)
-        over_match = re.search(r'tren\s+(\d+)\s*(tuoi|tuổi)', message)
-        if over_match:
-            age_limit = int(over_match.group(1))
-            result['age'] = age_limit + 5
-            if age_limit >= 65:
-                result['is_elderly'] = True
-
-        # Pattern: "15-40 tuoi" or "15 den 40 tuoi"
-        range_match = re.search(r'(\d+)\s*[-–]\s*(\d+)\s*(tuoi|tuổi)', message)
-        if not range_match:
-            range_match = re.search(r'(\d+)\s+den\s+(\d+)\s*(tuoi|tuổi)?', message)
-        if range_match:
-            low = int(range_match.group(1))
-            high = int(range_match.group(2))
-            result['age'] = (low + high) // 2
-            if result['age'] < 15:
-                result['is_pediatric'] = True
-            elif result['age'] >= 65:
-                result['is_elderly'] = True
-
-        # Pattern: exact age "X tuoi" or "X tuổi"
-        if result['age'] is None:
-            exact_match = re.search(r'(\d+)\s*(tuoi|tuổi)', message)
-            if exact_match:
-                result['age'] = int(exact_match.group(1))
-                if result['age'] < 15:
-                    result['is_pediatric'] = True
-                elif result['age'] >= 65:
-                    result['is_elderly'] = True
-
-        # Gender patterns (Vietnamese)
-        if re.search(r'\b(la\s+nam|nam\s+gioi)\b', message) or (re.search(r'\bnam\b', message) and not re.search(r'viet\s*nam', message)):
-            result['gender'] = 'male'
-        elif re.search(r'\b(la\s+nu|nu\s+gioi|nữ)\b', message) or re.search(r'\bnu\b', message):
-            result['gender'] = 'female'
-
-        # Pediatric detection (if no age provided)
-        if result['age'] is None:
-            pediatric_keywords = ['con toi', 'be', 'chau', 'tre em', 'thang tuoi']
-            for keyword in pediatric_keywords:
-                if keyword in message:
-                    result['is_pediatric'] = True
-                    break
-
-        # Elderly detection (if no age provided)
-        if result['age'] is None:
-            elderly_keywords = ['gia', 'cao tuoi', 'lon tuoi']
-            for keyword in elderly_keywords:
-                if keyword in message:
-                    result['is_elderly'] = True
-                    break
-
-        return result
-
-    def extract_duration_location(self, message):
-        """
-        Extract symptom duration and pain location
-
-        Args:
-            message (str): Normalized message
-
-        Returns:
-            dict: {'duration': str or None, 'location': str or None}
-        """
-        result = {
-            'duration': None,
-            'location': None
-        }
-
-        # Duration patterns
-        # "hom nay", "moi" (today, new)
+    def extract_duration(self, message):
+        """Extract duration from message"""
         if re.search(r'\b(hom nay|moi)\b', message):
-            result['duration'] = 'hom nay'
+            return 'hom nay'
 
-        # "X ngay" (X days)
         day_match = re.search(r'(\d+)\s*(ngay|ngày)', message)
         if day_match:
-            result['duration'] = f"{day_match.group(1)} ngay"
+            return f"{day_match.group(1)} ngay"
 
-        # "X tuan" (X weeks)
         week_match = re.search(r'(\d+)\s*(tuan|tuần)', message)
         if week_match:
-            result['duration'] = f"{week_match.group(1)} tuan"
+            return f"{week_match.group(1)} tuan"
 
-        # "X thang" (X months)
-        month_match = re.search(r'(\d+)\s*(thang|tháng)', message)
-        if month_match:
-            result['duration'] = f"{month_match.group(1)} thang"
+        return None
 
-        # Location patterns
-        location_patterns = [
-            (r'bung\s+tren', 'bung tren'),
-            (r'bung\s+duoi', 'bung duoi'),
-            (r'ben\s+phai', 'ben phai'),
-            (r'ben\s+trai', 'ben trai'),
-            (r'nguc\s+trai', 'nguc trai'),
-            (r'nguc\s+phai', 'nguc phai'),
-            (r'nua\s+dau', 'nua dau'),
-            (r'\bdau\b', 'dau')
-        ]
+    def extract_severity(self, message):
+        """Extract severity level (1-10) from message"""
+        # Direct number
+        match = re.search(r'\b(\d+)\s*/?\s*10\b', message)
+        if match:
+            return min(int(match.group(1)), 10)
 
-        for pattern, location_name in location_patterns:
-            if re.search(pattern, message):
-                result['location'] = location_name
-                break
+        match = re.search(r'\b(muc|mức)?\s*(\d+)\b', message)
+        if match and 1 <= int(match.group(2)) <= 10:
+            return int(match.group(2))
 
-        return result
+        # Keywords
+        if any(kw in message for kw in ['rat nang', 'du doi', 'qua dau', 'khong chiu noi']):
+            return 8
+        if any(kw in message for kw in ['nang', 'nhieu']):
+            return 6
+        if any(kw in message for kw in ['trung binh', 'vua']):
+            return 5
+        if any(kw in message for kw in ['nhe', 'it']):
+            return 3
 
-    def check_red_flags(self, message, context):
+        return None
+
+    def check_pregnant(self, message, gender):
+        """Check if patient is pregnant"""
+        if gender == 'nu' or gender is None:
+            for kw in self.pregnant_keywords:
+                if kw in message:
+                    return True
+        return False
+
+    # =========================================================================
+    # DATABASE QUERY METHODS
+    # =========================================================================
+
+    def check_red_flags(self, message, all_symptoms):
         """
-        Check for emergency red flag patterns in the message
-
-        Args:
-            message (str): Normalized user message
-            context (dict): Current conversation context
-
-        Returns:
-            dict: {
-                'has_red_flag': bool,
-                'red_flag': dict or None,
-                'esi_level': int or None
-            }
+        STEP 1: Check red_flags table for emergency situations
+        Returns red_flag info if matched, None otherwise
         """
         query = """
-        SELECT id, flag_name, symptom_pattern, esi_level, action,
-               warning_message, recommended_department, age_constraint
+        SELECT id, flag_name, symptom_pattern, esi_level, warning_message,
+               recommended_department
         FROM red_flags
         WHERE is_active = 1
         ORDER BY esi_level ASC
         """
-
         red_flags = Database.execute_query(query)
 
-        # Combine all text for matching (current message + accumulated symptoms)
-        all_symptoms = ' '.join(context.get('symptoms', []))
-        combined_text = f"{message} {all_symptoms}"
+        # Combine current message with all accumulated symptoms
+        combined_text = message + ' ' + ' '.join(all_symptoms)
 
         for flag in red_flags:
             pattern = json.loads(flag['symptom_pattern'])
             primary_keywords = pattern.get('primary', [])
             secondary_keywords = pattern.get('secondary', [])
-            flag_context = pattern.get('context', '')
 
             # Check primary keywords
             primary_match = False
-            for keyword in primary_keywords:
-                normalized_keyword = self.normalize_text(keyword)
-                if normalized_keyword in combined_text:
+            for kw in primary_keywords:
+                if self.normalize_text(kw) in combined_text:
                     primary_match = True
                     break
 
             if not primary_match:
                 continue
 
-            # Check context constraints
-            if flag_context == 'pregnant' and not context.get('is_pregnant'):
-                continue
-            if flag_context == 'pediatric' and not context.get('is_pediatric'):
-                continue
-
-            # Check age constraint
-            if flag['age_constraint']:
-                age_constraint = json.loads(flag['age_constraint'])
-                if age_constraint.get('max_age') and context.get('patient_age'):
-                    # Simple age check - skip if doesn't match
-                    pass
-
-            # Check secondary keywords
-            has_secondary = False
-            for keyword in secondary_keywords:
-                normalized_keyword = self.normalize_text(keyword)
-                if normalized_keyword in combined_text:
-                    has_secondary = True
-                    break
-
-            # Red flag trigger logic:
-            # - ESI level 1 (emergency): primary match is enough (chest pain, stroke, etc.)
-            # - ESI level 2 (urgent): REQUIRES secondary keyword match
-            #   (simple symptoms should go through 5-turn flow, not bypass)
+            # ESI 1: Primary match is enough
             if flag['esi_level'] == 1:
-                # Emergency - trigger on primary match alone
-                return {
-                    'has_red_flag': True,
-                    'red_flag': dict(flag),
-                    'esi_level': flag['esi_level']
-                }
-            elif flag['esi_level'] == 2 and has_secondary:
-                # Urgent - only trigger if secondary keywords also match
-                return {
-                    'has_red_flag': True,
-                    'red_flag': dict(flag),
-                    'esi_level': flag['esi_level']
-                }
+                return flag
 
-        return {
-            'has_red_flag': False,
-            'red_flag': None,
-            'esi_level': None
-        }
+            # ESI 2: Need secondary match too
+            if flag['esi_level'] == 2:
+                for kw in secondary_keywords:
+                    if self.normalize_text(kw) in combined_text:
+                        return flag
 
-    def extract_symptoms(self, message, existing_symptoms):
+        return None
+
+    def extract_symptoms_from_rules(self, message):
         """
-        Extract symptom keywords from user message
-
-        Args:
-            message (str): Normalized user message
-            existing_symptoms (list): Symptoms from previous turns
-
-        Returns:
-            list: Updated list of unique symptoms
+        Extract symptoms by matching against symptom_rules keywords
         """
         query = """
         SELECT DISTINCT symptom_keywords
         FROM symptom_rules
         WHERE is_active = 1
         """
-
         rules = Database.execute_query(query)
-        found_symptoms = set(existing_symptoms)
 
-        for rule in rules:
-            keywords = json.loads(rule['symptom_keywords'])
-            for keyword in keywords:
-                normalized_keyword = self.normalize_text(keyword)
-                if normalized_keyword in message:
-                    # Store the original keyword (with accents) for display
-                    found_symptoms.add(keyword)
-
-        return list(found_symptoms)
-
-    def match_symptom_rules(self, symptoms, context):
-        """
-        Match accumulated symptoms to department rules
-
-        Args:
-            symptoms (list): List of symptom keywords
-            context (dict): Conversation context
-
-        Returns:
-            list: Sorted list of {rule, department, score} dicts
-        """
-        if not symptoms:
+        if not rules:
+            print(f"[DEBUG] No symptom rules found in database!")
             return []
 
+        found_symptoms = []
+        for rule in rules:
+            keywords = json.loads(rule['symptom_keywords'])
+            for kw in keywords:
+                norm_kw = self.normalize_text(kw)
+                if norm_kw in message and kw not in found_symptoms:
+                    found_symptoms.append(kw)
+                    print(f"[DEBUG] Matched keyword '{kw}' in message")
+
+        return found_symptoms
+
+    def calculate_department_scores(self, all_symptoms, context):
+        """
+        STEP 2: Calculate scores for each department
+        Score = number of UNIQUE keyword matches × 2
+        Sum scores by department_id
+
+        IMPORTANT: Filter departments based on patient context:
+        - Pediatrics (Khoa Nhi): Only for age < 15
+        - OB/GYN (Khoa San Phu Khoa): Only for female patients
+        - ENT (Khoa Tai Mui Hong): For all patients
+        """
+        if not all_symptoms:
+            return {}
+
         query = """
-        SELECT sr.id, sr.rule_name, sr.department_id, sr.symptom_keywords,
-               sr.priority, sr.min_symptoms_match, sr.esi_level_default,
-               sr.follow_up_questions,
-               d.name_vi, d.name_en, d.room_number, d.floor, d.building,
-               d.doctor_name, d.description, d.working_hours
+        SELECT sr.department_id, sr.symptom_keywords, d.name_vi, d.name_en
         FROM symptom_rules sr
         JOIN departments d ON sr.department_id = d.id
         WHERE sr.is_active = 1 AND d.is_active = 1
-        ORDER BY sr.priority DESC
         """
-
         rules = Database.execute_query(query)
-        matches = []
+
+        if not rules:
+            return {}
+
+        # Get patient context
+        is_pediatric = context.get('is_pediatric', False)
+        patient_age = context.get('age')
+        patient_gender = context.get('gender')
+        is_pregnant = context.get('is_pregnant', False)
 
         # Normalize symptoms for matching
-        normalized_symptoms = [self.normalize_text(s) for s in symptoms]
+        norm_symptoms = [self.normalize_text(s) for s in all_symptoms]
+
+        # Track which keywords have been matched for each department (avoid double counting)
+        dept_matched_keywords = {}
+        dept_names = {}
 
         for rule in rules:
-            rule_keywords = json.loads(rule['symptom_keywords'])
-            normalized_keywords = [self.normalize_text(k) for k in rule_keywords]
+            dept_id = rule['department_id']
+            dept_name = rule['name_vi']
+            dept_name_en = rule.get('name_en', '')
+            keywords = json.loads(rule['symptom_keywords'])
 
-            # Count matches
-            match_count = 0
-            for norm_symptom in normalized_symptoms:
-                for norm_keyword in normalized_keywords:
-                    if norm_keyword in norm_symptom or norm_symptom in norm_keyword:
-                        match_count += 1
+            # =========================================================
+            # FILTER DEPARTMENTS BASED ON PATIENT CONTEXT
+            # =========================================================
+
+            # Pediatrics (Khoa Nhi) - Only for children (age < 15)
+            if 'Nhi' in dept_name or 'Pediatric' in dept_name_en:
+                if patient_age is not None and patient_age >= 15:
+                    print(f"[DEBUG] Skipping Pediatrics for adult patient (age={patient_age})")
+                    continue  # Skip this rule for adult patients
+
+            # OB/GYN (Khoa San Phu Khoa) - Only for female patients
+            if 'San' in dept_name or 'Phu Khoa' in dept_name or 'Obstetric' in dept_name_en or 'Gynecology' in dept_name_en:
+                if patient_gender == 'nam':  # Male
+                    print(f"[DEBUG] Skipping OB/GYN for male patient")
+                    continue  # Skip this rule for male patients
+
+            # =========================================================
+
+            dept_names[dept_id] = dept_name
+
+            if dept_id not in dept_matched_keywords:
+                dept_matched_keywords[dept_id] = set()
+
+            # Check each keyword in this rule
+            for kw in keywords:
+                norm_kw = self.normalize_text(kw)
+                # Check if this keyword matches any symptom
+                for norm_sym in norm_symptoms:
+                    # Exact match OR keyword contains symptom OR symptom contains keyword
+                    if norm_kw == norm_sym or norm_kw in norm_sym or norm_sym in norm_kw:
+                        dept_matched_keywords[dept_id].add(kw)
                         break
 
-            if match_count >= rule['min_symptoms_match']:
-                # Calculate score = match_count × priority
-                score = match_count * rule['priority']
-
-                # Boost for context match
-                if context.get('is_pregnant') and 'phu san' in self.normalize_text(rule['name_vi']):
-                    score *= 1.5
-                if context.get('is_pediatric') and 'nhi' in self.normalize_text(rule['name_vi']):
-                    score *= 1.5
-
-                matches.append({
-                    'rule': dict(rule),
-                    'department': {
-                        'id': rule['department_id'],
-                        'name_vi': rule['name_vi'],
-                        'name_en': rule['name_en'],
-                        'room_number': rule['room_number'],
-                        'floor': rule['floor'],
-                        'building': rule['building'],
-                        'doctor_name': rule['doctor_name'],
-                        'description': rule['description'],
-                        'working_hours': rule['working_hours']
-                    },
-                    'score': score,
+        # Calculate final scores
+        dept_scores = {}
+        for dept_id, matched_kws in dept_matched_keywords.items():
+            match_count = len(matched_kws)
+            if match_count > 0:  # Only include departments with matches
+                dept_scores[dept_id] = {
+                    'department_id': dept_id,
+                    'name_vi': dept_names[dept_id],
+                    'score': match_count * 2,
                     'match_count': match_count,
-                    'priority': rule['priority'],
-                    'follow_up_questions': json.loads(rule['follow_up_questions']) if rule['follow_up_questions'] else []
-                })
+                    'matched_keywords': list(matched_kws)
+                }
 
-        # Sort by score descending
-        matches.sort(key=lambda x: x['score'], reverse=True)
-        return matches
+        return dept_scores
 
-    def get_quick_replies_from_db(self, trigger_type, trigger_value):
+    def get_department_info(self, department_id):
+        """Query full department information"""
+        query = """
+        SELECT id, name_vi, name_en, room_number, floor, building,
+               doctor_name, description, working_hours
+        FROM departments
+        WHERE id = ? AND is_active = 1
         """
-        Query quick replies from quick_reply_rules table
+        return Database.execute_query(query, (department_id,), fetch_one=True)
 
-        Args:
-            trigger_type (str): Type of trigger - 'symptom', 'missing_info', 'context', 'default'
-            trigger_value (str): Value to match - e.g., 'dau bung', 'age', 'pregnant'
-
-        Returns:
-            list: List of quick reply dicts [{"id": "", "label": "", "value": ""}] or empty list
-        """
+    def get_quick_replies(self, trigger_type, trigger_value):
+        """Query quick replies from database"""
         query = """
         SELECT replies_json
         FROM quick_reply_rules
-        WHERE trigger_type = ?
-          AND trigger_value = ?
-          AND is_active = 1
+        WHERE trigger_type = ? AND trigger_value = ? AND is_active = 1
         ORDER BY priority DESC
         """
-
         result = Database.execute_query(query, (trigger_type, trigger_value), fetch_one=True)
 
-        if not result or not result.get('replies_json'):
-            return []
+        if result and result.get('replies_json'):
+            try:
+                return json.loads(result['replies_json'])
+            except:
+                pass
+        return []
 
-        try:
-            replies = json.loads(result['replies_json'])
-            return replies if isinstance(replies, list) else []
-        except (json.JSONDecodeError, TypeError):
-            return []
-
-    def determine_missing_info(self, context):
+    def get_follow_up_question(self, department_id):
+        """Get follow-up questions from symptom_rules"""
+        query = """
+        SELECT follow_up_questions
+        FROM symptom_rules
+        WHERE department_id = ? AND is_active = 1 AND follow_up_questions IS NOT NULL
         """
-        Determine what patient information is still missing
+        result = Database.execute_query(query, (department_id,), fetch_one=True)
 
-        Args:
-            context (dict): Current conversation context
+        if result and result.get('follow_up_questions'):
+            try:
+                questions = json.loads(result['follow_up_questions'])
+                if questions:
+                    return questions[0]  # Return first question
+            except:
+                pass
+        return None
 
-        Returns:
-            list: List of missing info types
+    # =========================================================================
+    # ESI CLASSIFICATION
+    # =========================================================================
+
+    def classify_esi_level(self, severity, is_pediatric, is_pregnant, duration):
         """
-        missing = []
-
-        if not context.get('patient_age'):
-            missing.append('age')
-
-        if not context.get('patient_gender'):
-            missing.append('gender')
-
-        if not context.get('collected_duration'):
-            missing.append('duration')
-
-        if not context.get('collected_location'):
-            missing.append('location')
-
-        return missing
-
-    def get_dynamic_quick_replies(self, symptoms, context, missing_info):
+        Classify ESI level 3, 4, or 5 (1-2 handled by red_flags)
         """
-        Generate dynamic quick replies based on current conversation state
+        severity = severity or 0
 
-        Priority order:
-        1. Missing critical info (age, gender) - highest priority
-        2. Context-specific (pregnant, pediatric, elderly)
-        3. Symptom-specific
-        4. Default replies (if nothing else matches)
+        # ESI 3: Need exam soon
+        if severity >= 5 and severity < 8:
+            return 3
+        if is_pediatric and severity >= 4:
+            return 3
+        if is_pregnant and severity >= 4:
+            return 3
+        if duration and ('tuan' in str(duration) or 'thang' in str(duration)):
+            return 3
 
-        Args:
-            symptoms (list): List of extracted symptoms
-            context (dict): Contains is_pregnant, is_pediatric, is_elderly, is_severe
-            missing_info (list): List of missing info types - ['age', 'gender', 'duration', 'location']
+        # ESI 4: Routine
+        if severity >= 3 and severity < 5:
+            return 4
 
-        Returns:
-            list: List of quick reply dicts, max 5 items
-        """
-        replies = []
+        # ESI 5: Low priority
+        return 5
 
-        # Priority 1: Missing critical info
-        if 'age' in missing_info:
-            replies.extend(self.get_quick_replies_from_db('missing_info', 'age'))
+    # =========================================================================
+    # RESPONSE GENERATION
+    # =========================================================================
 
-        if 'gender' in missing_info and len(replies) < 5:
-            replies.extend(self.get_quick_replies_from_db('missing_info', 'gender'))
+    def generate_recommendation_response(self, department, esi_level):
+        """Generate recommendation response with department info from database"""
 
-        # Priority 2: Context-specific
-        if context.get('is_pregnant') and len(replies) < 5:
-            replies.extend(self.get_quick_replies_from_db('context', 'pregnant'))
+        # Base response
+        response = f"Dua tren trieu chung cua ban, toi khuyen nghi ban den:\n\n"
+        response += f"🏥 {department['name_vi']}\n"
+        response += f"📍 Phong {department['room_number']}, Tang {department['floor']}, Toa {department['building']}\n"
+        response += f"👨‍⚕️ Bac si: {department['doctor_name']}\n"
+        response += f"⏰ Gio lam viec: {department['working_hours']}\n\n"
 
-        if context.get('is_pediatric') and len(replies) < 5:
-            replies.extend(self.get_quick_replies_from_db('context', 'pediatric'))
-
-        if context.get('is_elderly') and len(replies) < 5:
-            replies.extend(self.get_quick_replies_from_db('context', 'elderly'))
-
-        # Priority 3: Symptom-specific
-        if len(replies) < 5:
-            for symptom in symptoms:
-                normalized_symptom = self.normalize_text(symptom)
-                symptom_replies = self.get_quick_replies_from_db('symptom', normalized_symptom)
-                replies.extend(symptom_replies)
-                if len(replies) >= 5:
-                    break
-
-        # Priority 4: Default (if no replies found)
-        if not replies:
-            replies = self.get_quick_replies_from_db('default', 'initial')
-
-        # Limit to max 5 replies
-        return replies[:5]
-
-    def generate_turn_based_question(self, turn_number, context):
-        """
-        Generate follow-up question based on turn number (structured 5-turn flow)
-
-        FLOW:
-        - Turn 1: User gave symptoms → Ask age + gender
-        - Turn 2: User gave age/gender →
-            - If pregnant: Ask severity → then recommend OB/GYN or Emergency
-            - If not pregnant: Ask location
-        - Turn 3: User gave location → Ask duration
-        - Turn 4: User gave duration → Ask severity
-        - Turn 5: Force recommend based on collected info
-
-        PREGNANT PATH (shortcut):
-        - After detecting pregnancy, ask severity immediately
-        - Severe → Emergency (Cap cuu san khoa)
-        - Mild → OB/GYN (Khoa San Phu Khoa)
-
-        Args:
-            turn_number (int): Current turn number (just processed)
-            context (dict): Conversation context
-
-        Returns:
-            tuple: (question_text, question_type)
-        """
-        # Check for pregnant path - special handling
-        if context.get('is_pregnant'):
-            # If pregnant and severity not yet collected, ask severity
-            if not context.get('is_severe') and context.get('last_question_type') != 'pregnant_severity':
-                return (
-                    'Ban dang mang thai. Muc do dau/kho chiu cua ban nhu the nao? Nhe hay du doi?',
-                    'pregnant_severity'
-                )
-
-        # Normal flow based on turn number
-        if turn_number == 1:
-            # After Turn 1 (symptoms received), ask age + gender
-            return (
-                'Xin cho biet tuoi va gioi tinh cua ban? (Vi du: 30 tuoi, nu)',
-                'age_gender'
-            )
-
-        elif turn_number == 2:
-            # After Turn 2 (age/gender received), ask location
-            return (
-                'Ban co the cho biet vi tri dau cu the khong? (Vi du: bung tren, bung duoi, ben phai, ben trai)',
-                'location'
-            )
-
-        elif turn_number == 3:
-            # After Turn 3 (location received), ask duration
-            return (
-                'Trieu chung nay bat dau tu khi nao? (Vi du: hom nay, 2 ngay, 1 tuan)',
-                'duration'
-            )
-
-        elif turn_number == 4:
-            # After Turn 4 (duration received), ask severity
-            return (
-                'Muc do dau cua ban nhu the nao? Nhe, trung binh hay du doi?',
-                'severity'
-            )
-
+        # Urgency message based on ESI
+        if esi_level == 3:
+            response += "📌 Ban nen kham trong vong 1-2 gio toi."
+        elif esi_level == 4:
+            response += "✅ Trieu chung cua ban co the kham theo lich hen truoc."
         else:
-            # Turn 5+ - should trigger recommendation, fallback question
-            return (
-                'Ban co trieu chung nao khac can bo sung khong?',
-                'other'
-            )
+            response += "ℹ️ Trieu chung nhe, ban co the dat lich kham thuong qui."
 
-    def get_pregnant_recommendation(self, context):
-        """
-        Get department recommendation for pregnant patient based on severity
+        return response
 
-        Args:
-            context (dict): Conversation context with is_severe flag
+    # =========================================================================
+    # CONVERSATION SAVE
+    # =========================================================================
 
-        Returns:
-            dict: Department recommendation with response text
-        """
-        if context.get('is_severe'):
-            # Severe → Emergency
-            return {
-                'department_name': 'Cap cuu San khoa',
-                'response': 'KHAN CAP: Ban dang mang thai va co trieu chung nghiem trong. Vui long den Cap cuu San khoa ngay lap tuc!',
-                'esi_level': 2,
-                'alert_level': 'warning'
-            }
-        else:
-            # Mild → OB/GYN
-            return {
-                'department_name': 'Khoa San Phu Khoa',
-                'response': 'Dua tren tinh trang cua ban, toi de xuat ban den Khoa San Phu Khoa de duoc kham va tu van.',
-                'esi_level': 4,
-                'alert_level': None
-            }
-
-    def save_conversation_turn(self, session_id, turn_number, user_message, bot_response,
-                               symptoms, context, esi_level, red_flags, department_id, status,
-                               score=0):
-        """
-        Save a conversation turn to the database
-
-        Args:
-            session_id: Session identifier
-            turn_number: Current turn number
-            user_message: User's message
-            bot_response: Bot's response
-            symptoms: List of extracted symptoms
-            context: Conversation context dict
-            esi_level: ESI level
-            red_flags: List of matched red flags
-            department_id: Recommended department ID
-            status: Conversation status
-            score: Current score (0-10)
-        """
+    def save_turn(self, session_id, turn_number, user_message, bot_response,
+                  symptoms, context, esi_level, department_id, status, score):
+        """Save one conversation turn as new row"""
         query = """
         INSERT INTO conversations (
             session_id, turn_number, user_message, bot_response,
-            extracted_symptoms, current_esi_level, matched_red_flags,
-            recommended_department_id, conversation_status,
-            patient_age, patient_gender,
-            current_score, is_pregnant, is_pediatric, is_severe,
-            collected_duration, collected_location, last_question_type
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            extracted_symptoms, patient_age, patient_gender,
+            collected_duration, collected_severity,
+            is_pregnant, is_pediatric, is_severe,
+            current_esi_level, recommended_department_id,
+            conversation_status, current_score, last_question_type
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
 
         params = (
@@ -868,99 +419,116 @@ class ChatbotService:
             turn_number,
             user_message,
             bot_response,
-            json.dumps(symptoms, ensure_ascii=False),
-            esi_level,
-            json.dumps(red_flags, ensure_ascii=False) if red_flags else None,
-            department_id,
-            status,
-            context.get('patient_age'),
-            context.get('patient_gender'),
-            score,
+            json.dumps(symptoms, ensure_ascii=False) if symptoms else None,
+            context.get('age'),
+            context.get('gender'),
+            context.get('duration'),
+            context.get('severity'),
             context.get('is_pregnant', False),
             context.get('is_pediatric', False),
             context.get('is_severe', False),
-            context.get('collected_duration'),
-            context.get('collected_location'),
+            esi_level,
+            department_id,
+            status,
+            score,
             context.get('last_question_type')
         )
 
         return Database.execute_update(query, params)
 
+    # =========================================================================
+    # MAIN PROCESSING LOGIC
+    # =========================================================================
+
     def process_message(self, user_message, session_id):
         """
-        Main triage logic - process user message and return response
+        Main triage logic - 5 turns max, red flags first, threshold = 7
 
-        STRUCTURED 5-TURN FLOW:
-        Turn 1: User describes symptoms → Bot asks age + gender
-        Turn 2: User gives age/gender →
-                - If pregnant: Bot asks severity → recommend OB/GYN or Emergency
-                - If not pregnant: Bot asks location
-        Turn 3: User gives location → Bot asks duration
-        Turn 4: User gives duration → Bot asks severity
-        Turn 5: User gives severity → Bot recommends department
-
-        RED FLAGS: Checked at every turn, bypass flow if detected
-
-        Args:
-            user_message (str): Raw user message
-            session_id (str): Session ID
-
-        Returns:
-            dict: Response with all necessary fields for frontend
+        Flow (5 turns):
+        Turn 1: Symptoms
+        Turn 2: Age
+        Turn 3: Gender
+        Turn 4: Pregnancy (if female > 15) OR Duration (if male or female <= 15)
+        Turn 5: Severity
         """
-        # Step 1: Get existing context
-        existing_context = self.get_conversation_context(session_id)
-        turn_number = existing_context['turn_number'] + 1
+        # Normalize message
+        norm_message = self.normalize_text(user_message)
 
-        # Step 2: Normalize message for matching
-        normalized_message = self.normalize_text(user_message)
+        # Get last turn context
+        last_turn = self.get_last_turn(session_id)
 
-        # Step 3: Extract age/gender from current message
-        age_gender_info = self.extract_age_gender(normalized_message)
-
-        # Step 4: Extract duration/location from current message
-        duration_location_info = self.extract_duration_location(normalized_message)
-
-        # Step 5: Detect context from current message (pregnancy, severity)
-        context = self.detect_context(normalized_message, existing_context)
-
-        # Merge extracted info with existing context (keep existing if not None)
-        context['patient_age'] = existing_context.get('patient_age') or age_gender_info.get('age')
-        context['patient_gender'] = existing_context.get('patient_gender') or age_gender_info.get('gender')
-        context['collected_duration'] = existing_context.get('collected_duration') or duration_location_info.get('duration')
-        context['collected_location'] = existing_context.get('collected_location') or duration_location_info.get('location')
-
-        # Update is_pediatric and is_elderly from age extraction
-        if age_gender_info.get('is_pediatric'):
-            context['is_pediatric'] = True
-        if age_gender_info.get('is_elderly'):
-            context['is_elderly'] = True
+        if last_turn:
+            turn_number = last_turn['turn_number'] + 1
+            prev_symptoms = json.loads(last_turn['extracted_symptoms']) if last_turn['extracted_symptoms'] else []
+            # Check if pregnancy was already asked (last_question_type was 'pregnancy' in ANY previous turn)
+            last_q_type = last_turn.get('last_question_type')
+            context = {
+                'age': last_turn['patient_age'],
+                'gender': last_turn['patient_gender'],
+                'duration': last_turn['collected_duration'],
+                'severity': last_turn['collected_severity'],
+                'is_pregnant': last_turn['is_pregnant'] or False,
+                'is_pediatric': last_turn['is_pediatric'] or False,
+                'is_severe': last_turn['is_severe'] or False,
+                'last_question_type': last_q_type
+            }
         else:
-            context['is_elderly'] = existing_context.get('is_elderly', False)
+            turn_number = 1
+            prev_symptoms = []
+            context = {
+                'age': None, 'gender': None, 'duration': None, 'severity': None,
+                'is_pregnant': False, 'is_pediatric': False, 'is_severe': False,
+                'last_question_type': None
+            }
 
-        context.update({
-            'symptoms': existing_context['symptoms'],
-            'turn_number': turn_number,
-            'follow_up_asked': existing_context['follow_up_asked'],
-            'last_question_type': existing_context.get('last_question_type')
-        })
+        # Extract new information from current message
+        new_age = self.extract_age(norm_message)
+        new_gender = self.extract_gender(norm_message)
+        new_duration = self.extract_duration(norm_message)
+        new_severity = self.extract_severity(norm_message)
 
-        # Step 6: Check red flags at EVERY turn (bypass flow if detected)
-        red_flag_result = self.check_red_flags(normalized_message, context)
+        # Update context (keep existing if new is None)
+        if new_age:
+            context['age'] = new_age
+            context['is_pediatric'] = new_age < 15
+        if new_gender:
+            context['gender'] = new_gender
+        if new_duration:
+            context['duration'] = new_duration
+        if new_severity:
+            context['severity'] = new_severity
+            context['is_severe'] = new_severity >= 7
 
-        if red_flag_result['has_red_flag']:
-            # EMERGENCY - Return immediately, bypass turn flow
-            red_flag = red_flag_result['red_flag']
+        # Check pregnancy from keywords in message
+        if self.check_pregnant(norm_message, context['gender']):
+            context['is_pregnant'] = True
 
-            self.save_conversation_turn(
-                session_id, turn_number, user_message, red_flag['warning_message'],
-                context['symptoms'], context, red_flag['esi_level'],
-                [red_flag['flag_name']], None, 'completed',
-                score=10  # Max score for emergency
+        # If last question was pregnancy and user answered, mark pregnancy as asked
+        if context['last_question_type'] == 'pregnancy':
+            # User just answered pregnancy question - pregnancy status is now confirmed
+            # (either True from keywords or False if no keywords found)
+            pass  # is_pregnant is already set above
+
+        # Extract symptoms from current message
+        new_symptoms = self.extract_symptoms_from_rules(norm_message)
+        all_symptoms = list(set(prev_symptoms + new_symptoms))
+
+        # =====================================================================
+        # STEP 1: CHECK RED FLAGS (Highest Priority)
+        # =====================================================================
+        red_flag = self.check_red_flags(norm_message, all_symptoms)
+
+        if red_flag:
+            response = red_flag['warning_message']
+
+            self.save_turn(
+                session_id, turn_number, user_message, response,
+                all_symptoms, context, red_flag['esi_level'],
+                None, 'completed', 10
             )
 
             return {
-                'response': red_flag['warning_message'],
+                'response': response,
                 'session_id': session_id,
                 'alertLevel': 'danger' if red_flag['esi_level'] == 1 else 'warning',
                 'suggestedDepartment': red_flag['recommended_department'],
@@ -970,234 +538,261 @@ class ChatbotService:
                 'conversationStatus': 'completed'
             }
 
-        # Step 7: Extract symptoms from current message
-        symptoms = self.extract_symptoms(normalized_message, existing_context['symptoms'])
-        context['symptoms'] = symptoms
+        # =====================================================================
+        # STEP 2: CALCULATE SCORES (with patient context filtering)
+        # =====================================================================
+        dept_scores = self.calculate_department_scores(all_symptoms, context)
 
-        # Step 8: Match symptom rules
-        matches = self.match_symptom_rules(symptoms, context)
-        best_match = matches[0] if matches else None
+        # Debug: Print scoring info
+        print(f"[DEBUG] Turn {turn_number}")
+        print(f"[DEBUG] Patient context: age={context.get('age')}, gender={context.get('gender')}, is_pediatric={context.get('is_pediatric')}, is_pregnant={context.get('is_pregnant')}")
+        print(f"[DEBUG] Extracted symptoms: {all_symptoms}")
+        print(f"[DEBUG] Department scores: {dept_scores}")
 
-        # Step 9: Calculate score
-        score = self.calculate_score(
-            matched_keywords_count=len(symptoms),
-            context={
-                'is_pregnant': context.get('is_pregnant', False),
-                'is_pediatric': context.get('is_pediatric', False),
-                'is_elderly': context.get('is_elderly', False),
-                'is_severe': context.get('is_severe', False)
-            },
-            patient_info={
-                'age': context.get('patient_age'),
-                'gender': context.get('patient_gender'),
-                'duration': context.get('collected_duration'),
-                'location': context.get('collected_location')
-            }
+        # Find best department (highest score)
+        best_dept = None
+        best_score = 0
+        for dept_id, info in dept_scores.items():
+            if info['score'] > best_score:
+                best_score = info['score']
+                best_dept = info
+
+        print(f"[DEBUG] Best dept: {best_dept}, Best score: {best_score}")
+
+        # =====================================================================
+        # STEP 3: CHECK REQUIRED INFO AND TURN LIMIT
+        # =====================================================================
+        THRESHOLD = 7
+        MAX_TURNS = 5  # 5 turns for everyone
+
+        # Determine if we need to ask pregnancy
+        # Only ask pregnancy if: female AND age > 15 (not pediatric)
+        should_ask_pregnancy = (
+            context['gender'] == 'nu' and
+            context['age'] is not None and
+            context['age'] > 15 and
+            not context['is_pediatric']
         )
 
+        # Check if pregnancy was already asked (last question was pregnancy)
+        pregnancy_already_asked = context['last_question_type'] == 'pregnancy'
+
+        # For female > 15: we ask pregnancy in Turn 4, then severity in Turn 5 (skip duration)
+        # For others: we ask duration in Turn 4, then severity in Turn 5
+
+        # Check if all required info is collected based on patient type
+        if should_ask_pregnancy:
+            # Female > 15: need symptoms, age, gender, pregnancy_asked, severity
+            has_all_required_info = (
+                all_symptoms and
+                context['age'] is not None and
+                context['gender'] is not None and
+                pregnancy_already_asked and  # Must have asked pregnancy
+                context['severity'] is not None
+            )
+        else:
+            # Male or Female <= 15: need symptoms, age, gender, duration, severity
+            has_all_required_info = (
+                all_symptoms and
+                context['age'] is not None and
+                context['gender'] is not None and
+                context['duration'] is not None and
+                context['severity'] is not None
+            )
+
         # =====================================================================
-        # PREGNANT PATH - Special handling (shortcut to recommendation)
+        # CASE 1: Missing required info AND turn < 5 - Ask for missing info
         # =====================================================================
-        if context.get('is_pregnant'):
-            # Check if we already asked severity for pregnant patient
-            if existing_context.get('last_question_type') == 'pregnant_severity':
-                # User just answered severity question → Recommend now
-                recommendation = self.get_pregnant_recommendation(context)
-
-                # Find OB/GYN department from matches or use default
-                dept_id = None
-                dept_info = None
-                for m in matches:
-                    if 'san' in self.normalize_text(m['department']['name_vi']):
-                        dept_id = m['department']['id']
-                        dept_info = m['department']
-                        break
-
-                self.save_conversation_turn(
-                    session_id, turn_number, user_message, recommendation['response'],
-                    symptoms, context, recommendation['esi_level'],
-                    None, dept_id, 'completed',
-                    score=score
-                )
-
-                department_recommendation = None
-                if dept_info:
-                    department_recommendation = {
-                        'departmentId': dept_info['id'],
-                        'departmentName': dept_info['name_vi'],
-                        'doctorName': dept_info.get('doctor_name'),
-                        'roomNumber': dept_info.get('room_number'),
-                        'floor': dept_info.get('floor'),
-                        'description': dept_info.get('description'),
-                        'waitTime': 'Khoang 15-20 phut'
-                    }
-
-                return {
-                    'response': recommendation['response'],
-                    'session_id': session_id,
-                    'alertLevel': recommendation['alert_level'],
-                    'suggestedDepartment': recommendation['department_name'],
-                    'confidence': 1.0,
-                    'quickReplies': None,
-                    'departmentRecommendation': department_recommendation,
-                    'conversationStatus': 'completed'
-                }
+        if not has_all_required_info and turn_number < MAX_TURNS:
+            # Determine what to ask next based on turn number
+            if not all_symptoms:
+                # Turn 1: Ask symptoms
+                response = "Xin chao! Ban co the mo ta trieu chung cua minh duoc khong?"
+                quick_replies = self.get_quick_replies('default', 'initial')
+                context['last_question_type'] = 'symptoms'
+            elif context['age'] is None:
+                # Turn 2: Ask age
+                response = "Ban bao nhieu tuoi?"
+                quick_replies = self.get_quick_replies('missing_info', 'age')
+                context['last_question_type'] = 'age'
+            elif context['gender'] is None:
+                # Turn 3: Ask gender
+                response = "Gioi tinh cua ban la gi?"
+                quick_replies = self.get_quick_replies('missing_info', 'gender')
+                context['last_question_type'] = 'gender'
+            elif should_ask_pregnancy and not pregnancy_already_asked:
+                # Turn 4 (female > 15): Ask pregnancy
+                response = "Ban co dang mang thai khong?"
+                quick_replies = self.get_quick_replies('missing_info', 'pregnancy')
+                context['last_question_type'] = 'pregnancy'
+            elif not should_ask_pregnancy and context['duration'] is None:
+                # Turn 4 (male or female <= 15): Ask duration
+                response = "Trieu chung nay bat dau tu bao lau roi?"
+                quick_replies = self.get_quick_replies('missing_info', 'duration')
+                context['last_question_type'] = 'duration'
+            elif context['severity'] is None:
+                # Turn 5: Ask severity
+                response = "Muc do dau/kho chiu cua ban the nao? (1-10)"
+                quick_replies = self.get_quick_replies('missing_info', 'severity')
+                context['last_question_type'] = 'severity'
             else:
-                # Pregnant detected but haven't asked severity yet → Ask severity
-                response_text, question_type = self.generate_turn_based_question(turn_number, context)
-                context['last_question_type'] = question_type
+                # Fallback - ask for more symptoms
+                response = "Ban co trieu chung nao khac khong?"
+                quick_replies = self.get_quick_replies('default', 'initial')
+                context['last_question_type'] = 'follow_up'
 
-                # Quick replies for pregnant severity
-                quick_replies = self.get_quick_replies_from_db('missing_info', 'severity')
-
-                self.save_conversation_turn(
-                    session_id, turn_number, user_message, response_text,
-                    symptoms, context, None, None, None, 'in_progress',
-                    score=score
-                )
-
-                return {
-                    'response': response_text,
-                    'session_id': session_id,
-                    'alertLevel': None,
-                    'suggestedDepartment': None,
-                    'confidence': min(score / 10, 1.0),
-                    'quickReplies': quick_replies if quick_replies else None,
-                    'departmentRecommendation': None,
-                    'conversationStatus': 'in_progress'
-                }
-
-        # =====================================================================
-        # NORMAL PATH - 5-turn structured flow
-        # =====================================================================
-
-        # No symptoms yet - ask for symptoms first (Turn 0 -> 1)
-        if not symptoms and not matches:
-            response_text = 'Cam on ban da lien he. Ban co the mo ta cu the trieu chung cua minh duoc khong? Vi du: dau dau, dau bung, sot, ho...'
-            quick_replies = self.get_quick_replies_from_db('default', 'initial')
-            context['last_question_type'] = 'symptom'
-
-            self.save_conversation_turn(
-                session_id, turn_number, user_message, response_text,
-                symptoms, context, None, None, None, 'in_progress',
-                score=0
+            self.save_turn(
+                session_id, turn_number, user_message, response,
+                all_symptoms, context, None, None, 'in_progress', best_score
             )
 
             return {
-                'response': response_text,
+                'response': response,
                 'session_id': session_id,
                 'alertLevel': None,
                 'suggestedDepartment': None,
-                'confidence': 0.0,
-                'quickReplies': quick_replies,
+                'confidence': min(best_score / 10, 1.0) if best_score else 0.0,
+                'quickReplies': quick_replies if quick_replies else None,
                 'departmentRecommendation': None,
                 'conversationStatus': 'in_progress'
             }
 
-        # Decision: Recommend or continue asking based on turn number and score
-        # Turn 5 or score >= 7 → Force recommendation
-        should_recommend = (turn_number >= 5) or (score >= 7)
+        # =====================================================================
+        # CASE 2: All required info collected AND score >= 7 - Recommend
+        # =====================================================================
+        if has_all_required_info and best_score >= THRESHOLD and best_dept:
+            dept_info = self.get_department_info(best_dept['department_id'])
+            esi_level = self.classify_esi_level(
+                context['severity'], context['is_pediatric'],
+                context['is_pregnant'], context['duration']
+            )
 
-        if should_recommend and best_match:
-            # Give department recommendation
-            dept = best_match['department']
-            response_text = f"Dua tren cac trieu chung cua ban, toi de xuat ban den {dept['name_vi']}."
+            response = self.generate_recommendation_response(dept_info, esi_level)
 
-            department_recommendation = {
-                'departmentId': dept['id'],
-                'departmentName': dept['name_vi'],
-                'doctorName': dept['doctor_name'],
-                'roomNumber': dept['room_number'],
-                'floor': dept['floor'],
-                'description': dept['description'],
-                'waitTime': 'Khoang 15-20 phut'
-            }
-
-            self.save_conversation_turn(
-                session_id, turn_number, user_message, response_text,
-                symptoms, context, best_match['rule']['esi_level_default'],
-                None, dept['id'], 'completed',
-                score=score
+            self.save_turn(
+                session_id, turn_number, user_message, response,
+                all_symptoms, context, esi_level,
+                best_dept['department_id'], 'completed', best_score
             )
 
             return {
-                'response': response_text,
+                'response': response,
                 'session_id': session_id,
                 'alertLevel': None,
-                'suggestedDepartment': dept['name_vi'],
-                'confidence': min(score / 10, 1.0),
+                'suggestedDepartment': dept_info['name_vi'],
+                'confidence': min(best_score / 10, 1.0),
                 'quickReplies': None,
-                'departmentRecommendation': department_recommendation,
+                'departmentRecommendation': {
+                    'departmentId': dept_info['id'],
+                    'departmentName': dept_info['name_vi'],
+                    'roomNumber': dept_info['room_number'],
+                    'floor': dept_info['floor'],
+                    'building': dept_info['building'],
+                    'doctorName': dept_info['doctor_name'],
+                    'workingHours': dept_info['working_hours']
+                },
                 'conversationStatus': 'completed'
             }
 
         # =====================================================================
-        # CONTINUE TURN-BASED FLOW (Turn 1-4)
+        # CASE 3: All info collected but score < 7 AND turn < 5 - Ask follow-up
         # =====================================================================
+        if has_all_required_info and best_score < THRESHOLD and turn_number < MAX_TURNS:
+            if best_dept:
+                follow_up = self.get_follow_up_question(best_dept['department_id'])
+                if follow_up:
+                    response = follow_up
+                else:
+                    response = "Ban co trieu chung nao khac khong?"
+            else:
+                response = "Ban co the mo ta them trieu chung cua minh duoc khong?"
+            quick_replies = self.get_quick_replies('default', 'initial')
+            context['last_question_type'] = 'follow_up'
 
-        # Generate question based on current turn number
-        response_text, question_type = self.generate_turn_based_question(turn_number, context)
-        context['last_question_type'] = question_type
+            self.save_turn(
+                session_id, turn_number, user_message, response,
+                all_symptoms, context, None, None, 'in_progress', best_score
+            )
 
-        # Get appropriate quick replies based on question type
-        if question_type == 'age_gender':
-            quick_replies = self.get_quick_replies_from_db('missing_info', 'age')
-        elif question_type == 'location':
-            # Get symptom-specific location quick replies
-            quick_replies = []
-            for symptom in symptoms:
-                normalized_symptom = self.normalize_text(symptom)
-                symptom_replies = self.get_quick_replies_from_db('symptom', f'{normalized_symptom}_location')
-                if symptom_replies:
-                    quick_replies.extend(symptom_replies)
-                    break
-            if not quick_replies:
-                quick_replies = self.get_quick_replies_from_db('symptom', 'dau bung_location')
-        elif question_type == 'duration':
-            quick_replies = self.get_quick_replies_from_db('missing_info', 'duration')
-        elif question_type == 'severity':
-            quick_replies = self.get_quick_replies_from_db('missing_info', 'severity')
+            return {
+                'response': response,
+                'session_id': session_id,
+                'alertLevel': None,
+                'suggestedDepartment': None,
+                'confidence': min(best_score / 10, 1.0) if best_score else 0.0,
+                'quickReplies': quick_replies if quick_replies else None,
+                'departmentRecommendation': None,
+                'conversationStatus': 'in_progress'
+            }
+
+        # =====================================================================
+        # CASE 4: Turn = 5 (max reached) - Must make final decision
+        # =====================================================================
+        if best_score > 0 and best_dept:
+            # Recommend with available score
+            dept_info = self.get_department_info(best_dept['department_id'])
+            esi_level = self.classify_esi_level(
+                context['severity'], context['is_pediatric'],
+                context['is_pregnant'], context['duration']
+            )
+
+            response = self.generate_recommendation_response(dept_info, esi_level)
+
+            self.save_turn(
+                session_id, turn_number, user_message, response,
+                all_symptoms, context, esi_level,
+                best_dept['department_id'], 'completed', best_score
+            )
+
+            return {
+                'response': response,
+                'session_id': session_id,
+                'alertLevel': None,
+                'suggestedDepartment': dept_info['name_vi'],
+                'confidence': min(best_score / 10, 1.0),
+                'quickReplies': None,
+                'departmentRecommendation': {
+                    'departmentId': dept_info['id'],
+                    'departmentName': dept_info['name_vi'],
+                    'roomNumber': dept_info['room_number'],
+                    'floor': dept_info['floor'],
+                    'building': dept_info['building'],
+                    'doctorName': dept_info['doctor_name'],
+                    'workingHours': dept_info['working_hours']
+                },
+                'conversationStatus': 'completed'
+            }
         else:
-            quick_replies = self.get_quick_replies_from_db('default', 'initial')
+            # Score = 0, cannot suggest
+            response = "Toi khong the de xuat khoa kham dua tren mo ta cua ban. Chung toi se goi y ta den ho tro ban."
 
-        self.save_conversation_turn(
-            session_id, turn_number, user_message, response_text,
-            symptoms, context, None, None, None, 'in_progress',
-            score=score
-        )
+            self.save_turn(
+                session_id, turn_number, user_message, response,
+                all_symptoms, context, None, None, 'completed', 0
+            )
 
-        return {
-            'response': response_text,
-            'session_id': session_id,
-            'alertLevel': None,
-            'suggestedDepartment': None,
-            'confidence': min(score / 10, 1.0),
-            'quickReplies': quick_replies if quick_replies else None,
-            'departmentRecommendation': None,
-            'conversationStatus': 'in_progress'
-        }
+            return {
+                'response': response,
+                'session_id': session_id,
+                'alertLevel': None,
+                'suggestedDepartment': None,
+                'confidence': 0.0,
+                'quickReplies': None,
+                'departmentRecommendation': None,
+                'conversationStatus': 'completed'
+            }
+
+    # =========================================================================
+    # UTILITY METHODS
+    # =========================================================================
 
     def reset_conversation(self, session_id):
-        """
-        Reset/delete all conversation data for a session
-
-        Args:
-            session_id (str): Session ID to reset
-        """
+        """Reset/delete conversation for a session"""
         query = "DELETE FROM conversations WHERE session_id = ?"
         return Database.execute_update(query, (session_id,))
 
     def get_conversation_history(self, session_id, limit=10):
-        """
-        Get conversation history for a session
-
-        Args:
-            session_id (str): Session ID
-            limit (int): Maximum turns to return
-
-        Returns:
-            list: List of conversation turns
-        """
+        """Get conversation history"""
         query = f"""
         SELECT TOP {limit} turn_number, user_message, bot_response,
                extracted_symptoms, current_esi_level, conversation_status,
@@ -1206,5 +801,4 @@ class ChatbotService:
         WHERE session_id = ?
         ORDER BY turn_number ASC
         """
-
         return Database.execute_query(query, (session_id,))

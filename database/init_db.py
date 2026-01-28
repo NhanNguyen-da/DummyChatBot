@@ -118,6 +118,7 @@ def create_conversations_table(cursor):
             is_pediatric BIT DEFAULT 0,
             is_severe BIT DEFAULT 0,
             collected_duration NVARCHAR(100),
+            collected_severity INT,
             collected_location NVARCHAR(100),
             last_question_type NVARCHAR(50),
             
@@ -325,6 +326,7 @@ def seed_quick_reply_rules(cursor, force_reseed=False):
         # Missing info
         ('missing_info', 'age', '[{"id": "age_1", "label": "Duoi 15 tuoi", "value": "Toi duoi 15 tuoi"}, {"id": "age_2", "label": "15-40 tuoi", "value": "Toi tu 15 den 40 tuoi"}, {"id": "age_3", "label": "41-65 tuoi", "value": "Toi tu 41 den 65 tuoi"}, {"id": "age_4", "label": "Tren 65 tuoi", "value": "Toi tren 65 tuoi"}]', 10),
         ('missing_info', 'gender', '[{"id": "gender_1", "label": "Nam", "value": "Toi la nam"}, {"id": "gender_2", "label": "Nu", "value": "Toi la nu"}]', 9),
+        ('missing_info', 'pregnancy', '[{"id": "preg_yes", "label": "Co, toi dang mang thai", "value": "Co, toi dang mang thai"}, {"id": "preg_no", "label": "Khong", "value": "Khong, toi khong mang thai"}]', 8),
         ('missing_info', 'duration', '[{"id": "dur_1", "label": "Hom nay", "value": "Moi bat dau hom nay"}, {"id": "dur_2", "label": "1-3 ngay", "value": "Duoc 1 den 3 ngay"}, {"id": "dur_3", "label": "Tren 1 tuan", "value": "Da hon 1 tuan"}, {"id": "dur_4", "label": "Tren 1 thang", "value": "Da hon 1 thang"}]', 8),
         ('missing_info', 'severity', '[{"id": "sev_1", "label": "Nhe", "value": "Muc do nhe, chiu duoc"}, {"id": "sev_2", "label": "Trung binh", "value": "Muc do trung binh, kho chiu"}, {"id": "sev_3", "label": "Nang", "value": "Muc do nang, rat kho chiu"}, {"id": "sev_4", "label": "Rat nang", "value": "Rat nang, khong chiu noi"}]', 7),
         # Context
