@@ -146,7 +146,7 @@ export class ChatComponent implements OnInit, AfterViewChecked {
       const container = this.messagesContainer?.nativeElement;
       if (container) {
         container.scrollTop = container.scrollHeight;
-      }
+      }  
     } catch (err) {
       console.error('Scroll error:', err);
     }
@@ -230,6 +230,12 @@ export class ChatComponent implements OnInit, AfterViewChecked {
   }
 
   get isInputDisabled(): boolean {
-    return this.conversationState.isTyping || !!this.lastMessageDepartmentCard;
+    return this.conversationState.isTyping || !!this.lastMessageDepartmentCard || this.hasRedFlagAlert;
+  }
+
+  get hasRedFlagAlert(): boolean {
+    return this.conversationState.messages.some(
+      m => m.type === 'alert' && m.alertLevel === 'danger'
+    );
   }
 }

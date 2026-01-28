@@ -95,6 +95,80 @@
 }
 
 // ===========================================
+// Red Flag Warning Box
+// ===========================================
+.red-flag-warning-box {
+  display: flex;
+  align-items: center;
+  gap: $spacing-md;
+  padding: $spacing-md $spacing-lg;
+  background-color: $bg-danger;
+  border-bottom: 2px solid $color-danger;
+  animation: slideDown 0.3s ease-out;
+
+  @include mobile {
+    padding: $spacing-sm $spacing-md;
+    gap: $spacing-sm;
+  }
+}
+
+.warning-icon {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  background-color: $color-danger;
+  border-radius: $radius-circle;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: $background-white;
+
+  svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  @include mobile {
+    width: 40px;
+    height: 40px;
+
+    svg {
+      width: 24px;
+      height: 24px;
+    }
+  }
+}
+
+.warning-content {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
+
+.warning-title {
+  font-size: $font-size-body;
+  font-weight: $font-weight-semibold;
+  color: $color-danger;
+}
+
+.warning-message {
+  font-size: $font-size-small;
+  color: $text-primary;
+  line-height: $line-height-body;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// ===========================================
 // Messages Area
 // ===========================================
 .messages-area {
